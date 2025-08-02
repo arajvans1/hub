@@ -24,6 +24,9 @@ test_*.py
 *_examples.py
 *_simulation.py
 show_*.py
+debug_test.py
+llm_fixed.py
+issue_resolution.py
 
 # Documentation and notes
 message

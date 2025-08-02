@@ -115,8 +115,8 @@ class SAPMonitoringAgent:
 
     def _execute_tool_call(self, tool_call) -> dict:
         """Execute a function tool call - handles command-specific functions"""
-        function_name = tool_call.function.name
-        function_args = json.loads(tool_call.function.arguments)
+        function_name = tool_call["name"]
+        function_args = tool_call["args"]  # Already a dict, no need to json.loads()
         
         # Function name IS the command name (cpu, memory, disk_usage, etc.)
         command = function_name
@@ -210,9 +210,9 @@ class SAPMonitoringAgent:
             if tool_calls:
                 assistant_msg["tool_calls"] = [
                     {
-                        "id": tc.id,
+                        "id": tc["id"],
                         "type": "function", 
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments}
+                        "function": {"name": tc["name"], "arguments": tc["args"]}
                     } for tc in tool_calls
                 ]
             messages.append(assistant_msg)
@@ -226,7 +226,7 @@ class SAPMonitoringAgent:
                     # Add tool result to working messages
                     messages.append({
                         "role": "tool",
-                        "tool_call_id": tool_call.id,
+                        "tool_call_id": tool_call["id"],
                         "content": json.dumps(result)
                     })
                 
