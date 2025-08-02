@@ -86,72 +86,71 @@ class SAPMonitoringAgent:
         """Parse JSON response - no LangChain parser needed!"""
         try:
             action = json.loads(response)
-            if action.get("action") == "monitoring":
+            if (action.get("action") == "monitoring" and 
+                "server" in action and 
+                "command" in action):
                 return action
         except json.JSONDecodeError:
             pass
         return None
 
-    def chat(self, user_input: str, chat_history: List[dict] = None, max_steps: int = 5) -> str:
+    def chat(self, chat_history: List[dict], max_steps: int = 3) -> str:
         """
-        Main chat method with conversation history support.
+        Main chat method - expects user input already in chat_history.
         
         Args:
-            user_input: User's question
-            chat_history: Previous conversation messages (modified in-place)
+            chat_history: Conversation messages including current user input
             max_steps: Maximum reasoning steps
             
         Returns:
             Assistant's response
         """
-        if chat_history is None:
-            chat_history = []
-            
-        context = ""
+        # Build messages from chat history (includes system prompt and current user input)
+        messages = list(chat_history)  # Copy chat history
+
+        final_response = None
         
         for step in range(max_steps):
-            # Build messages with conversation history
-            messages = [{"role": "system", "content": self.system_prompt}]
+            # Get LLM response with error handling
+            try:
+                llm_response = self.llm.invoke(messages)
+                content = llm_response.content.strip()
+            except Exception as e:
+                final_response = f"Error communicating with AI service: {str(e)}"
+                break
             
-            # Add conversation history
-            messages.extend(chat_history)
-            
-            # Add context if available
-            if context:
-                messages.append({"role": "system", "content": f"Recent tool results: {context}"})
-            
-            # Add current user input
-            messages.append({"role": "user", "content": user_input})
-
-            # Get LLM response
-            llm_response = self.llm.invoke(messages)
-            content = llm_response.content.strip()
-
             # Try to parse as tool call
             action = self._parse_json_response(content)
             
-            if action:
-                server = action["server"]
-                command = action["command"]
-                params = action.get("params", {}) or {}
+            if not action:
+                # Plain text response - this is our final answer
+                final_response = content
+                break
+                
+            # We have a tool call - extract details (now safe due to validation)
+            server = action["server"]
+            command = action["command"]
+            params = action.get("params", {}) or {}
 
-                # Validate
-                if not self._validate_command(command, params):
-                    return f"Invalid command or params: {command} {params}"
+            # Validate command
+            if not self._validate_command(command, params):
+                final_response = f"Invalid command or params: {command} {params}"
+                break
+                
+            # Execute tool and add result to working messages
+            result = self._call_agent_api(server, command, params)
+                
+            messages.append({"role": "assistant", "content": content})
+            messages.append({"role": "system", "content": f"Tool result: {result}"})
+            # Continue to next step for final response
 
-                # Execute tool
-                result = self._call_agent_api(server, command, params)
-                context += f"\nTool called: {server}/{command} {params} → {result}"
-                continue  # Continue reasoning
-            else:
-                # Update chat history and return final answer
-                chat_history.extend([
-                    {"role": "user", "content": user_input},
-                    {"role": "assistant", "content": content}
-                ])
-                return content
+        # If we hit max steps without a final response, return error
+        if final_response is None:
+            final_response = f"Unable to complete request within {max_steps} steps. Please try a simpler request."
 
-        return f"Max steps {max_steps} reached without final answer."
+        # Add only the final response to chat history (not tool call JSON)
+        chat_history.append({"role": "assistant", "content": final_response})
+        return final_response
 
 
 # ------------------------
@@ -169,7 +168,8 @@ def main():
     print("Examples: 'Check CPU on hana01', 'Get memory usage for server02'")
     print("-" * 50)
     
-    chat_history = []  # Persistent conversation history
+    # Initialize chat history with system prompt (added once!)
+    chat_history = [{"role": "system", "content": agent.system_prompt}]
     
     while True:
         try:
@@ -182,8 +182,15 @@ def main():
             if not user_input:
                 continue
                 
-            # Get response with conversation history
-            response = agent.chat(user_input, chat_history)
+            # Add user input to chat history BEFORE calling chat
+            chat_history.append({"role": "user", "content": user_input})
+            
+            # Keep chat history manageable (last 20 messages + system prompt)
+            if len(chat_history) > 21:  # system + 20 messages
+                chat_history = [chat_history[0]] + chat_history[-20:]  # Keep system + last 20
+            
+            # Get response - no need to pass user_input separately!
+            response = agent.chat(chat_history)
             print(f"\nAssistant: {response}")
             
         except KeyboardInterrupt:
