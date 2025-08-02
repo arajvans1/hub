@@ -55,15 +55,14 @@ def validate_command(command: str, params: dict) -> bool:
     return expected_keys.issubset(provided_keys)
 
 # ------------------------
-# Prompt Template Setup
+# Prompt Template
 # ------------------------
 def build_command_help():
     help_lines = [
         f"- {cmd}: {spec['description']}, params: {spec['params']}"
         for cmd, spec in COMMAND_SPECS.items()
     ]
-    help_text = "\n".join(help_lines)
-    return help_text.replace("{", "{{").replace("}", "}}")
+    return "\n".join(help_lines).replace("{", "{{").replace("}", "}}")
 
 command_help = build_command_help()
 
@@ -78,16 +77,18 @@ Available commands:
 
 {command_help}
 
-Your job:
-1. Decide if a monitoring tool call is needed
-2. Output ONLY JSON if tool is needed:
+Instructions:
+1. If monitoring tool is needed, output ONLY JSON in this format:
    {{{{
      "action": "monitoring",
      "server": "<server>",
      "command": "<command>",
      "params": {{{{}}}}
    }}}}
-3. Otherwise, respond in plain English.
+2. Otherwise, respond in plain English.
+
+Conversation so far:
+{{history}}
 
 User: {{user_input}}
 Context: {{context}}
@@ -96,20 +97,27 @@ Context: {{context}}
 parser = JsonOutputParser()
 
 # ------------------------
-# Multi-Step Agent Logic
+# Multi-Turn Agent with Memory
 # ------------------------
-def agent_loop(user_input: str, max_steps: int = 5):
-    context = ""
+def agent_step(user_input: str, chat_history: list, max_steps: int = 3):
+    """
+    chat_history: list of {"role": "user"/"assistant", "content": str}
+    """
+    # Build history text for the prompt
+    history_text = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in chat_history)
+    context = ""  # additional tool results per loop
+
     for step in range(max_steps):
-        # Step 1: Ask LLM
         messages = base_prompt_template.format_messages(
             user_input=user_input,
-            context=context or "None yet"
+            history=history_text,
+            context=context or "None"
         )
+
         llm_response = llm.invoke(messages)
         content = llm_response.content.strip()
 
-        # Step 2: Try parsing JSON for tool invocation
+        # Step 1: Try to parse as tool action
         try:
             action = parser.parse(content)
             if action.get("action") == "monitoring":
@@ -117,31 +125,35 @@ def agent_loop(user_input: str, max_steps: int = 5):
                 command = action["command"]
                 params = action.get("params", {}) or {}
 
-                # Validate command + params
                 if not validate_command(command, params):
                     return f"Invalid command or params: {command} {params}"
 
-                # Step 3: Execute monitoring
+                # Step 2: Execute tool
                 result = monitoring(server, command, params)
-                # Add result to context for next reasoning step
                 context += f"\nTool called: {server}/{command} {params} → {result}"
-
-                continue  # LLM can reason again
+                continue  # Let LLM reason again with result in context
 
         except Exception:
-            # No valid JSON → treat as final answer
+            # Not a JSON action → final answer
+            chat_history.append({"role": "assistant", "content": content})
             return content
 
-        # If LLM did not produce a tool call → it's the final answer
-        return content
-
-    return f"Max steps {max_steps} reached without final answer."
-
+    return f"Max reasoning steps reached without final answer."
 
 # ------------------------
-# Test
+# Example Multi-Turn Conversation
 # ------------------------
 if __name__ == "__main__":
-    # Example: Multi-step reasoning
-    query = "Check CPU on hana01 and memory on hana02"
-    print(agent_loop(query))
+    chat_history = []
+    while True:
+        user_input = input("User: ")
+        if user_input.lower() in ["exit", "quit"]:
+            break
+
+        output = agent_step(user_input, chat_history)
+        chat_history.append({"role": "user", "content": user_input})
+        chat_history.append({"role": "assistant", "content": output})
+        print("Assistant:", output)
+      
+   
+
