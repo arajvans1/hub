@@ -4,24 +4,20 @@ from typing import List, Optional
 from langchain_openai import AzureChatOpenAI
 
 
-# System prompt template - moved out of class for clarity
+# System prompt template - using function calling (no command redundancy needed)
 SYSTEM_PROMPT_TEMPLATE = """You are a SAP Monitoring Assistant with access to system monitoring tools.
 
-## Available Commands:
-{command_help}
-
-## Response Format:
-When monitoring is needed, respond with ONLY this JSON structure:
-{{"action": "monitoring", "server": "<server_name>", "command": "<command_name>", "params": {{}} }}
-
-When monitoring is NOT needed, respond in plain English.
+## Instructions:
+- Use the available monitoring functions to check server status
+- Provide explanations and analysis in natural language
+- You can call multiple monitoring commands in sequence
+- Always interpret and explain the monitoring results to the user
 
 ## Examples:
-User: "Check CPU on server01" 
-Response: {{"action": "monitoring", "server": "server01", "command": "cpu", "params": {{}} }}
-
-User: "What commands are available?"
-Response: I can help you monitor SAP servers with these commands: cpu, memory, get_process_list, and disk_usage."""
+User: "Check CPU and disk usage on server01"
+Response: I'll check both CPU and disk usage for server01.
+[Function calls will be made automatically based on available tools]
+Then provide analysis of both results."""
 
 
 class SAPMonitoringAgent:
@@ -33,15 +29,33 @@ class SAPMonitoringAgent:
         self.MONITORING_DOMAIN = "mybank.net"
         
         self.COMMAND_SPECS = {
-            "cpu": {"description": "Get current CPU usage", "params": {}},
-            "memory": {"description": "Get current memory usage", "params": {}},
+            "cpu_info": {
+                "description": "Get current CPU usage", 
+                "params": {},
+                "required": [],  # No additional params required beyond server
+                "agent_command": "top -bn1 | grep 'Cpu(s)' | head -1",
+                "backend": "shell"
+            },
+            "memory_info": {
+                "description": "Get current memory usage", 
+                "params": {},
+                "required": [],  # No additional params required beyond server
+                "agent_command": "free -h",
+                "backend": "shell"
+            },
             "get_process_list": {
                 "description": "Get list of running processes for a given instance",
-                "params": {"instance": "00"}
+                "params": {"instance": "00", "filter": "SAP*", "limit": "50"},
+                "required": ["instance"],  # instance required, filter/limit optional
+                "agent_command": "execute soap call",
+                "backend": "soap"
             },
             "disk_usage": {
-                "description": "Get disk usage stats for a mount point",
-                "params": {"mount": "/hana"}
+                "description": "Get disk usage stats for a path",
+                "params": {"path": "/hana", "threshold": "80"},
+                "required": ["path"],  # path required, threshold optional
+                "agent_command": "df -h {{.path}}",
+                "backend": "shell"
             }
         }
         
@@ -55,12 +69,11 @@ class SAPMonitoringAgent:
             timeout=30,     # Timeout handling
         )
         
-        # Build system prompt once
-        command_help = "\n".join([
-            f"- {cmd}: {spec['description']}, params: {spec['params']}"
-            for cmd, spec in self.COMMAND_SPECS.items()
-        ])
-        self.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(command_help=command_help)
+        # Generate tools from COMMAND_SPECS - single source of truth (Option C)
+        self.tools = self._build_command_specific_tools()
+        
+        # Build system prompt (no command_help needed - tools provide this info)
+        self.system_prompt = SYSTEM_PROMPT_TEMPLATE
     
     def _call_agent_api(self, server: str, command: str, params: dict = None) -> dict:
         """Execute monitoring command - simple and clean."""
@@ -75,15 +88,21 @@ class SAPMonitoringAgent:
             return {"error": str(e)}
 
     def _validate_command(self, command: str, params: dict) -> bool:
-        """Validate command and parameters."""
+        """Validate command and parameters using improved required field."""
         if command not in self.COMMAND_SPECS:
             return False
-        expected_keys = set(self.COMMAND_SPECS[command]["params"].keys())
+        
+        spec = self.COMMAND_SPECS[command]
+        required_keys = set(spec["required"])
         provided_keys = set(params.keys())
-        return expected_keys.issubset(provided_keys)
+        
+        # Check that all required parameters are provided
+        return required_keys.issubset(provided_keys)
+        # Note: Optional parameters can be missing - that's perfectly fine!
 
     def _parse_json_response(self, response: str) -> Optional[dict]:
-        """Parse JSON response - no LangChain parser needed!"""
+        """Parse JSON response - DEPRECATED: Now using OpenAI function calling"""
+        # This method is kept for backward compatibility but not used
         try:
             action = json.loads(response)
             if (action.get("action") == "monitoring" and 
@@ -94,9 +113,70 @@ class SAPMonitoringAgent:
             pass
         return None
 
+    def _execute_tool_call(self, tool_call) -> dict:
+        """Execute a function tool call - handles command-specific functions"""
+        function_name = tool_call.function.name
+        function_args = json.loads(tool_call.function.arguments)
+        
+        # Function name IS the command name (cpu, memory, disk_usage, etc.)
+        command = function_name
+        server = function_args.get("server")
+        
+        # Extract parameters (everything except 'server')
+        params = {k: v for k, v in function_args.items() if k != "server"}
+        
+        # Validate command exists
+        if command not in self.COMMAND_SPECS:
+            return {"error": f"Unknown command: {command}"}
+        
+        # Validate parameters (this should rarely fail with proper OpenAI schema)
+        if not self._validate_command(command, params):
+            return {"error": f"Invalid params for {command}: {params}"}
+        
+        # Execute monitoring command
+        return self._call_agent_api(server, command, params)
+
+    def _build_command_specific_tools(self):
+        """Build OpenAI tools from improved COMMAND_SPECS with required field"""
+        tools = []
+        
+        for cmd, spec in self.COMMAND_SPECS.items():
+            # Build parameter properties for ALL available parameters
+            param_properties = {"server": {"type": "string", "description": "Server name to monitor"}}
+            
+            # Start with server as always required
+            required_params = ["server"]
+            
+            # Add all parameters from params (both required and optional)
+            for param_name, default_val in spec["params"].items():
+                is_required = param_name in spec["required"]
+                param_properties[param_name] = {
+                    "type": "string",
+                    "description": f"{'Required' if is_required else 'Optional'} parameter for {cmd} command (default: {default_val})"
+                }
+            
+            # Add only the required parameters to the required array
+            required_params.extend(spec["required"])
+            
+            # Create function with command name directly
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": cmd,
+                    "description": f"{spec['description']} on specified server",
+                    "parameters": {
+                        "type": "object",
+                        "properties": param_properties,
+                        "required": required_params
+                    }
+                }
+            })
+        
+        return tools
+
     def chat(self, chat_history: List[dict], max_steps: int = 3) -> str:
         """
-        Main chat method - expects user input already in chat_history.
+        Main chat method using OpenAI function calling - much more robust!
         
         Args:
             chat_history: Conversation messages including current user input
@@ -105,50 +185,63 @@ class SAPMonitoringAgent:
         Returns:
             Assistant's response
         """
-        # Build messages from chat history (includes system prompt and current user input)
+        # Build messages from chat history
         messages = list(chat_history)  # Copy chat history
 
         final_response = None
         
         for step in range(max_steps):
-            # Get LLM response with error handling
+            # Get LLM response with function calling capability
             try:
-                llm_response = self.llm.invoke(messages)
-                content = llm_response.content.strip()
+                llm_response = self.llm.invoke(
+                    messages, 
+                    tools=self.tools,
+                    tool_choice="auto"  # Let LLM decide when to use tools
+                )
+                content = llm_response.content.strip() if llm_response.content else ""
+                tool_calls = llm_response.tool_calls or []
+                
             except Exception as e:
                 final_response = f"Error communicating with AI service: {str(e)}"
                 break
             
-            # Try to parse as tool call
-            action = self._parse_json_response(content)
+            # Add assistant message to working messages
+            assistant_msg = {"role": "assistant", "content": content}
+            if tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function", 
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments}
+                    } for tc in tool_calls
+                ]
+            messages.append(assistant_msg)
             
-            if not action:
-                # Plain text response - this is our final answer
+            # Process any tool calls
+            if tool_calls:
+                for tool_call in tool_calls:
+                    # Execute the tool
+                    result = self._execute_tool_call(tool_call)
+                    
+                    # Add tool result to working messages
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(result)
+                    })
+                
+                # Continue to next step to get final response with tool results
+                continue
+            else:
+                # No tool calls - this is our final response
                 final_response = content
                 break
-                
-            # We have a tool call - extract details (now safe due to validation)
-            server = action["server"]
-            command = action["command"]
-            params = action.get("params", {}) or {}
-
-            # Validate command
-            if not self._validate_command(command, params):
-                final_response = f"Invalid command or params: {command} {params}"
-                break
-                
-            # Execute tool and add result to working messages
-            result = self._call_agent_api(server, command, params)
-                
-            messages.append({"role": "assistant", "content": content})
-            messages.append({"role": "system", "content": f"Tool result: {result}"})
-            # Continue to next step for final response
 
         # If we hit max steps without a final response, return error
         if final_response is None:
             final_response = f"Unable to complete request within {max_steps} steps. Please try a simpler request."
 
-        # Add only the final response to chat history (not tool call JSON)
+        # Add only the final response to chat history (not tool call details)
         chat_history.append({"role": "assistant", "content": final_response})
         return final_response
 

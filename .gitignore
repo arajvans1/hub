@@ -1,1 +1,90 @@
+# SAP S/4HANA Monitoring Platform - LLM Chatbot Component
+# Keep only the core LLM implementation (llm.py) and documentation
+
+# Analysis and review files
+architecture_decision_analysis.py
+backend_demo.py
+caching_analysis.py
+comprehensive_review.py
+corrected_quick_wins_demo.py
+logical_error_check.py
+production_simulation.py
+quick_wins_demo.py
+
+# Testing and validation files
+test_tools.py
+test_usage_examples.py
+show_command_specs.py
+show_current_tools.py
 test_template.py
+test_updated_template.py
+test_*.py
+*_test.py
+*_demo.py
+*_examples.py
+*_simulation.py
+show_*.py
+
+# Documentation and notes
+message
+
+# Python cache and environment files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
