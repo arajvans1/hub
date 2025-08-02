@@ -6,15 +6,12 @@ from langchain_openai import AzureChatOpenAI
 
 class SAPMonitoringAgent:
     """
-    An AI agent that helps monitor SAP servers through conversational interface.
-    Uses Azure OpenAI via LangChain to understand natural language requests.
+    A clean, simple SAP monitoring agent without unnecessary LangChain complexity.
     """
     
     def __init__(self, api_key: str, azure_endpoint: str):
-        # Configuration
         self.MONITORING_DOMAIN = "mybank.net"
         
-        # Available monitoring commands
         self.COMMAND_SPECS = {
             "cpu": {"description": "Get current CPU usage", "params": {}},
             "memory": {"description": "Get current memory usage", "params": {}},
@@ -28,42 +25,37 @@ class SAPMonitoringAgent:
             }
         }
         
-        # Initialize LangChain LLM
+        # Simple LLM initialization - only what we need
         self.llm = AzureChatOpenAI(
             api_key=api_key,
             api_version="2024-08-01",
             azure_endpoint=azure_endpoint,
             model="gpt-4",
         )
-         # Build system prompt
+        
+        # Build system prompt once
         self.system_prompt = self._build_system_prompt()
     
     def _build_system_prompt(self) -> str:
-        """Build the system prompt with available commands."""
+        """Build system prompt with available commands - no templates needed!"""
         command_help = "\n".join([
             f"- {cmd}: {spec['description']}, params: {spec['params']}"
             for cmd, spec in self.COMMAND_SPECS.items()
         ])
         
+        # Simple string - no LangChain template magic needed
         return f"""You are a SAP Monitoring Assistant.
-
-You can call the tool: monitoring(server: str, command: str, params: dict)
 
 Available commands:
 {command_help}
 
 Instructions:
-1. If monitoring tool is needed, output ONLY JSON in this format:
-   {{
-     "action": "monitoring",
-     "server": "<server>",
-     "command": "<command>",
-     "params": {{}}
-   }}
+1. If monitoring is needed, output ONLY JSON:
+   {{"action": "monitoring", "server": "<server>", "command": "<command>", "params": {{}} }}
 2. Otherwise, respond in plain English."""
 
     def _call_monitoring_api(self, server: str, command: str, params: Dict = None) -> Dict:
-        """Execute monitoring command on SAP server."""
+        """Execute monitoring command - simple and clean."""
         if params is None:
             params = {}
         try:
@@ -75,15 +67,15 @@ Instructions:
             return {"error": str(e)}
 
     def _validate_command(self, command: str, params: Dict) -> bool:
-        """Validate if command and parameters are correct."""
+        """Validate command and parameters."""
         if command not in self.COMMAND_SPECS:
             return False
         expected_keys = set(self.COMMAND_SPECS[command]["params"].keys())
         provided_keys = set(params.keys())
         return expected_keys.issubset(provided_keys)
 
-    def _parse_llm_response(self, response: str) -> Optional[Dict]:
-        """Try to parse LLM response as JSON tool call."""
+    def _parse_json_response(self, response: str) -> Optional[Dict]:
+        """Parse JSON response - no LangChain parser needed!"""
         try:
             action = json.loads(response)
             if action.get("action") == "monitoring":
@@ -92,102 +84,69 @@ Instructions:
             pass
         return None
 
-    def _execute_tool_call(self, action: Dict) -> Dict:
-        """Execute a monitoring tool call."""
-        server = action["server"]
-        command = action["command"] 
-        params = action.get("params", {}) or {}
-        
-        # Validate command
-        if not self._validate_command(command, params):
-            return {"error": f"Invalid command or params: {command} {params}"}
-        
-        # Execute monitoring call
-        return self._call_monitoring_api(server, command, params)
-
-    def chat(self, user_input: str, chat_history: List[Dict], max_steps: int = 3) -> str:
+    def chat(self, user_input: str, max_steps: int = 5) -> str:
         """
-        Main conversation method. Handles user input and returns assistant response.
+        Main chat method - simple and clean!
         
         Args:
-            user_input: User's question/request
-            chat_history: List of {"role": "user"/"assistant", "content": str}
-            max_steps: Maximum reasoning steps to prevent infinite loops
+            user_input: User's question
+            max_steps: Maximum reasoning steps
             
         Returns:
-            Assistant's response as string
+            Assistant's response
         """
         context = ""
         
         for step in range(max_steps):
-            # Build messages for LangChain
-            messages = [{"role": "system", "content": self.system_prompt}]
+            # Build messages - no template complexity needed
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": user_input}
+            ]
             
-            # Add conversation history
-            messages.extend(chat_history)
-            
-            # Add current context if available
             if context:
-                messages.append({"role": "system", "content": f"Current Context: {context}"})
-            
-            # Add user input
-            messages.append({"role": "user", "content": user_input})
+                messages.insert(1, {"role": "system", "content": f"Context: {context}"})
 
             # Get LLM response
             llm_response = self.llm.invoke(messages)
-            response_text = llm_response.content.strip()
-            
-            # Try to parse as tool call
-            tool_call = self._parse_llm_response(response_text)
-            
-            if tool_call:
-                # Execute the tool call
-                result = self._execute_tool_call(tool_call)
-                
-                if "error" in result:
-                    # Return error message
-                    error_msg = result["error"]
-                    chat_history.append({"role": "assistant", "content": error_msg})
-                    return error_msg
-                
-                # Add tool result to context for next iteration
-                context += f"\nTool called: {tool_call['server']}/{tool_call['command']} {tool_call.get('params', {})} → {result}"
-                continue
-            else:
-                # Regular response - return it
-                chat_history.append({"role": "assistant", "content": response_text})
-                return response_text
+            content = llm_response.content.strip()
 
-        # Max steps reached
-        error_msg = "Max reasoning steps reached without final answer."
-        chat_history.append({"role": "assistant", "content": error_msg})
-        return error_msg
+            # Try to parse as tool call
+            action = self._parse_json_response(content)
+            
+            if action:
+                server = action["server"]
+                command = action["command"]
+                params = action.get("params", {}) or {}
+
+                # Validate
+                if not self._validate_command(command, params):
+                    return f"Invalid command or params: {command} {params}"
+
+                # Execute tool
+                result = self._call_monitoring_api(server, command, params)
+                context += f"\nTool called: {server}/{command} {params} → {result}"
+                continue  # Continue reasoning
+            else:
+                # Final answer
+                return content
+
+        return f"Max steps {max_steps} reached without final answer."
 
 
 # ------------------------
-# Example Usage
+# Simple Usage
 # ------------------------
 def main():
-    """Example of how to use the SAP Monitoring Agent."""
-    # Initialize agent (replace with your actual credentials)
+    """Simple example usage."""
     agent = SAPMonitoringAgent(
         api_key="YOUR_KEY",
         azure_endpoint="https://your-endpoint.openai.azure.com/"
     )
     
-    # Interactive conversation
-    chat_history = []
-    print("SAP Monitoring Assistant (type 'exit' to quit)")
-    print("=" * 50)
-    
-    while True:
-        user_input = input("\nUser: ")
-        if user_input.lower() in ["exit", "quit"]:
-            break
-            
-        response = agent.chat(user_input, chat_history)
-        chat_history.append({"role": "user", "content": user_input})
-        print(f"Assistant: {response}")
+    # Test query
+    result = agent.chat("Check CPU on hana01 and memory on hana02")
+    print(result)
 
 
 if __name__ == "__main__":
