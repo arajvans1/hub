@@ -1,13 +1,44 @@
-import requests
 import json
-import yaml
-import os
-from typing import List, Optional
+from typing import List, Dict, Any
 from langchain_openai import AzureChatOpenAI
 
+from command_loader import CommandLoader
+from command_builder import CommandBuilder
+from agent import Agent
+from function_schema_builder import FunctionSchemaBuilder
 
-# System prompt template - using function calling (no command redundancy needed)
-SYSTEM_PROMPT_TEMPLATE = """You are a SAP Monitoring Assistant with access to system monitoring tools.
+
+# Shared singletons - created once and reused
+class SharedResources:
+    """Simple container for shared resources - no fancy singleton pattern"""
+    def __init__(self):
+        self.commands_loader = None
+        self.command_builder = None
+        self.agent = None
+        self.function_schema_builder = None
+        self.tools = None
+        self.system_prompt = None
+        self.initialized = False
+    
+    def initialize(self, commands_file: str = "commands.yaml"):
+        """Initialize all shared resources"""
+        if self.initialized:
+            return
+            
+        # Create shared objects once
+        self.commands_loader = CommandLoader(commands_file)
+        commands = self.commands_loader.get_commands()
+        
+        # Hard-coded monitoring domain (not part of function schemas)
+        monitoring_domain = "mybank.net"
+        
+        self.command_builder = CommandBuilder(commands)
+        self.agent = Agent(monitoring_domain)
+        self.function_schema_builder = FunctionSchemaBuilder(commands)
+        self.tools = self.function_schema_builder.build_function_schemas()
+        
+        # System prompt
+        self.system_prompt = """You are a SAP Monitoring Assistant with access to system monitoring tools.
 
 ## Instructions:
 - Use the available monitoring functions to check server status
@@ -20,171 +51,76 @@ User: "Check CPU and disk usage on server01"
 Response: I'll check both CPU and disk usage for server01.
 [Function calls will be made automatically based on available tools]
 Then provide analysis of both results."""
+        
+        self.initialized = True
+        print(f"Shared resources initialized with {len(commands)} commands")
 
 
 class SAPMonitoringAgent:
     """
-    A clean, simple SAP monitoring agent without unnecessary LangChain complexity.
-    Commands are loaded from YAML configuration for maximum flexibility.
+    Lightweight SAP monitoring agent that uses explicitly passed shared resources.
     """
     
-    def __init__(self, api_key: str, azure_endpoint: str, config_file: str = "commands.yaml"):
-        # Load configuration from YAML file
-        self.config = self._load_config(config_file)
-        self.COMMAND_SPECS = self.config["commands"]
-        self.MONITORING_DOMAIN = self.config["monitoring"]["domain"]
+    def __init__(self, api_key: str, azure_endpoint: str, shared_resources: SharedResources):
+        """
+        Initialize agent with explicitly passed shared resources.
         
-        # Simple LLM initialization with retry logic
+        Args:
+            api_key: Azure OpenAI API key
+            azure_endpoint: Azure OpenAI endpoint
+            shared_resources: SharedResources instance with all shared objects
+        """
+        if not shared_resources.initialized:
+            raise RuntimeError("SharedResources not initialized!")
+            
+        # Store reference to shared resources
+        self.shared = shared_resources
+        
+        # Only create the LLM client per agent
         self.llm = AzureChatOpenAI(
             api_key=api_key,
             api_version="2024-08-01",
             azure_endpoint=azure_endpoint,
             model="gpt-4",
-            max_retries=3,  # Built-in retry
-            timeout=30,     # Timeout handling
+            max_retries=3,
+            timeout=30,
         )
         
-        # Generate tools from COMMAND_SPECS - single source of truth (Option C)
-        self.tools = self._build_command_specific_tools()
-        
-        # Build system prompt (no command_help needed - tools provide this info)
-        self.system_prompt = SYSTEM_PROMPT_TEMPLATE
+        # Direct access to shared resources
+        self.tools = self.shared.tools
+        self.system_prompt = self.shared.system_prompt
     
-    def _build_command(self, command_spec: dict, params: dict) -> str:
-        """Build the actual command from spec and parameters."""
-        base_command = command_spec["agent_command"]
-        
-        # Simple template substitution for parameters
-        # Replace {{.param_name}} with actual values
-        for param_name, param_value in params.items():
-            placeholder = f"{{{{.{param_name}}}}}"
-            base_command = base_command.replace(placeholder, str(param_value))
-            
-        return base_command
-
-    def _discover_agent(self, server: str) -> str:
-        """Discover the appropriate agent for a server. For now, simple implementation."""
-        # TODO: Implement proper agent discovery logic
-        # This could query a service registry, DNS, or configuration
-        protocol = self.config["monitoring"]["protocol"]
-        port = self.config["agent_discovery"]["default_port"]
-        return f"{protocol}://{server}.{self.MONITORING_DOMAIN}:{port}"
-
-    def _call_agent_api(self, server: str, command: str, params: dict = None) -> dict:
-        """Execute monitoring command using improved architecture."""
-        if params is None:
-            params = {}
-            
-        try:
-            # Get command specification
-            command_spec = self.COMMAND_SPECS[command]
-            
-            # Discover agent for this server
-            agent_url = self._discover_agent(server)
-            
-            # Build the actual command
-            actual_command = self._build_command(command_spec, params)
-            
-            # Send constructed command to agent (new payload format)
-            payload = {
-                "command": actual_command,
-                "backend": command_spec["backend"],
-                "timeout": command_spec.get("timeout", 30)
-            }
-            
-            timeout = self.config["agent_discovery"]["timeout"]
-            response = requests.post(f"{agent_url}/execute", json=payload, timeout=timeout)
-            return response.json()
-            
-        except Exception as e:
-            return {"error": str(e)}
-
-    def _validate_command(self, command: str, params: dict) -> bool:
-        """Validate command and parameters using improved required field."""
-        if command not in self.COMMAND_SPECS:
-            return False
-        
-        spec = self.COMMAND_SPECS[command]
-        required_keys = set(spec["required"])
-        provided_keys = set(params.keys())
-        
-        # Check that all required parameters are provided
-        return required_keys.issubset(provided_keys)
-        # Note: Optional parameters can be missing - that's perfectly fine!
-
-    def _parse_json_response(self, response: str) -> Optional[dict]:
-        """Parse JSON response - DEPRECATED: Now using OpenAI function calling"""
-        # This method is kept for backward compatibility but not used
-        try:
-            action = json.loads(response)
-            if (action.get("action") == "monitoring" and 
-                "server" in action and 
-                "command" in action):
-                return action
-        except json.JSONDecodeError:
-            pass
-        return None
-
-    def _execute_tool_call(self, tool_call) -> dict:
+    def _execute_tool_call(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a function tool call - handles command-specific functions"""
         function_name = tool_call["name"]
         function_args = tool_call["args"]  # Already a dict, no need to json.loads()
         
-        # Function name IS the command name (cpu, memory, disk_usage, etc.)
+        # Function name IS the command name (cpu_info, memory_info, disk_usage, etc.)
         command = function_name
         server = function_args.get("server")
         
         # Extract parameters (everything except 'server')
         params = {k: v for k, v in function_args.items() if k != "server"}
         
-        # Validate command exists
-        if command not in self.COMMAND_SPECS:
+        # Validate command exists and parameters are valid using shared command builder
+        if not self.shared.command_builder.validate_command(command, params):
+            return {"error": f"Invalid command '{command}' or parameters: {params}"}
+        
+        # Get command specification from CommandLoader
+        command_spec = self.shared.commands_loader.get_command_spec(command)
+        if not command_spec:
             return {"error": f"Unknown command: {command}"}
         
-        # Validate parameters (this should rarely fail with proper OpenAI schema)
-        if not self._validate_command(command, params):
-            return {"error": f"Invalid params for {command}: {params}"}
+        # Build the actual command using shared command builder
+        actual_command = self.shared.command_builder.build_command(command_spec, params)
         
-        # Execute monitoring command
-        return self._call_agent_api(server, command, params)
-
-    def _build_command_specific_tools(self):
-        """Build OpenAI tools from improved COMMAND_SPECS with required field"""
-        tools = []
-        
-        for cmd, spec in self.COMMAND_SPECS.items():
-            # Build parameter properties for ALL available parameters
-            param_properties = {"server": {"type": "string", "description": "Server name to monitor"}}
-            
-            # Start with server as always required
-            required_params = ["server"]
-            
-            # Add all parameters from params (both required and optional)
-            for param_name, default_val in spec["params"].items():
-                is_required = param_name in spec["required"]
-                param_properties[param_name] = {
-                    "type": "string",
-                    "description": f"{'Required' if is_required else 'Optional'} parameter for {cmd} command (default: {default_val})"
-                }
-            
-            # Add only the required parameters to the required array
-            required_params.extend(spec["required"])
-            
-            # Create function with command name directly
-            tools.append({
-                "type": "function",
-                "function": {
-                    "name": cmd,
-                    "description": f"{spec['description']} on specified server",
-                    "parameters": {
-                        "type": "object",
-                        "properties": param_properties,
-                        "required": required_params
-                    }
-                }
-            })
-        
-        return tools
+        # Execute monitoring command via shared agent
+        return self.shared.agent.call_agent_api(
+            server=server,
+            command=actual_command,
+            backend=command_spec["backend"],
+            timeout=command_spec.get("timeout", 30)
+        )
 
     def chat(self, chat_history: List[dict], max_steps: int = 3) -> str:
         """
@@ -257,55 +193,43 @@ class SAPMonitoringAgent:
         chat_history.append({"role": "assistant", "content": final_response})
         return final_response
 
-    def _load_config(self, config_file: str) -> dict:
-        """Load configuration from YAML file."""
-        try:
-            # Get the directory of the current script
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            config_path = os.path.join(script_dir, config_file)
-            
-            with open(config_path, 'r') as file:
-                config = yaml.safe_load(file)
-                
-            # Validate required sections
-            if "commands" not in config:
-                raise ValueError("Missing 'commands' section in configuration file")
-            if "monitoring" not in config:
-                raise ValueError("Missing 'monitoring' section in configuration file")
-                
-            return config
-            
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Configuration file '{config_file}' not found. Please ensure it exists in the same directory as the script.")
-        except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML syntax in configuration file: {e}")
-        except Exception as e:
-            raise RuntimeError(f"Error loading configuration: {e}")
-
 # ------------------------
 # Usage Examples
 # ------------------------
 def main():
     """Interactive SAP monitoring chat interface."""
+    
+    # Create shared resources ONCE - you can clearly see what's being created
+    print("Creating shared resources...")
+    shared_resources = SharedResources()
+    
+    # Initialize shared resources ONCE at startup
+    try:
+        shared_resources.initialize(commands_file="commands.yaml")
+    except Exception as e:
+        print(f"Failed to initialize shared resources: {e}")
+        print("\nPlease ensure:")
+        print("1. PyYAML is installed: pip install pyyaml")
+        print("2. commands.yaml exists in the same directory")
+        return
+    
+    # Now create lightweight agent - passing shared resources explicitly
     try:
         agent = SAPMonitoringAgent(
             api_key="YOUR_KEY",
             azure_endpoint="https://your-endpoint.openai.azure.com/",
-            config_file="commands.yaml"  # Optional: defaults to commands.yaml
+            shared_resources=shared_resources  # Explicit dependency injection
         )
         
         print("=== SAP Monitoring Assistant ===")
-        print(f"Loaded {len(agent.COMMAND_SPECS)} commands from configuration")
+        print(f"Loaded {len(shared_resources.commands_loader.get_commands())} commands from configuration")
         print("Type your monitoring requests or 'quit' to exit")
         print("Examples: 'Check CPU on hana01', 'Get memory usage for server02'")
         print("-" * 50)
         
     except Exception as e:
         print(f"Failed to initialize SAP Monitoring Agent: {e}")
-        print("\nPlease ensure:")
-        print("1. PyYAML is installed: pip install pyyaml")
-        print("2. commands.yaml exists in the same directory")
-        print("3. Your Azure OpenAI credentials are correct")
+        print("Please ensure your Azure OpenAI credentials are correct")
         return
     
     # Initialize chat history with system prompt (added once!)

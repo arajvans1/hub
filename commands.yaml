@@ -50,14 +50,3 @@ commands:
   #   agent_command: "sapcontrol -nr {{.instance}} -function GetSystemInstanceList"
   #   backend: "shell"
   #   timeout: 45
-
-# Configuration for agent discovery and routing
-agent_discovery:
-  default_port: 8090
-  timeout: 5
-  retry_attempts: 3
-  
-# Domain configuration
-monitoring:
-  domain: "mybank.net"
-  protocol: "http"
