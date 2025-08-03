@@ -91,3 +91,10 @@ logs/
 tmp/
 temp/
 .tmp/
+
+# Allow core project files
+!llm.py
+!commands.yaml  
+!requirements.txt
+!README.md
+!.gitignore

@@ -1,5 +1,7 @@
 import requests
 import json
+import yaml
+import os
 from typing import List, Optional
 from langchain_openai import AzureChatOpenAI
 
@@ -23,41 +25,14 @@ Then provide analysis of both results."""
 class SAPMonitoringAgent:
     """
     A clean, simple SAP monitoring agent without unnecessary LangChain complexity.
+    Commands are loaded from YAML configuration for maximum flexibility.
     """
     
-    def __init__(self, api_key: str, azure_endpoint: str):
-        self.MONITORING_DOMAIN = "mybank.net"
-        
-        self.COMMAND_SPECS = {
-            "cpu_info": {
-                "description": "Get current CPU usage", 
-                "params": {},
-                "required": [],  # No additional params required beyond server
-                "agent_command": "top -bn1 | grep 'Cpu(s)' | head -1",
-                "backend": "shell"
-            },
-            "memory_info": {
-                "description": "Get current memory usage", 
-                "params": {},
-                "required": [],  # No additional params required beyond server
-                "agent_command": "free -h",
-                "backend": "shell"
-            },
-            "get_process_list": {
-                "description": "Get list of running processes for a given instance",
-                "params": {"instance": "00", "filter": "SAP*", "limit": "50"},
-                "required": ["instance"],  # instance required, filter/limit optional
-                "agent_command": "execute soap call",
-                "backend": "soap"
-            },
-            "disk_usage": {
-                "description": "Get disk usage stats for a path",
-                "params": {"path": "/hana", "threshold": "80"},
-                "required": ["path"],  # path required, threshold optional
-                "agent_command": "df -h {{.path}}",
-                "backend": "shell"
-            }
-        }
+    def __init__(self, api_key: str, azure_endpoint: str, config_file: str = "commands.yaml"):
+        # Load configuration from YAML file
+        self.config = self._load_config(config_file)
+        self.COMMAND_SPECS = self.config["commands"]
+        self.MONITORING_DOMAIN = self.config["monitoring"]["domain"]
         
         # Simple LLM initialization with retry logic
         self.llm = AzureChatOpenAI(
@@ -75,15 +50,52 @@ class SAPMonitoringAgent:
         # Build system prompt (no command_help needed - tools provide this info)
         self.system_prompt = SYSTEM_PROMPT_TEMPLATE
     
+    def _build_command(self, command_spec: dict, params: dict) -> str:
+        """Build the actual command from spec and parameters."""
+        base_command = command_spec["agent_command"]
+        
+        # Simple template substitution for parameters
+        # Replace {{.param_name}} with actual values
+        for param_name, param_value in params.items():
+            placeholder = f"{{{{.{param_name}}}}}"
+            base_command = base_command.replace(placeholder, str(param_value))
+            
+        return base_command
+
+    def _discover_agent(self, server: str) -> str:
+        """Discover the appropriate agent for a server. For now, simple implementation."""
+        # TODO: Implement proper agent discovery logic
+        # This could query a service registry, DNS, or configuration
+        protocol = self.config["monitoring"]["protocol"]
+        port = self.config["agent_discovery"]["default_port"]
+        return f"{protocol}://{server}.{self.MONITORING_DOMAIN}:{port}"
+
     def _call_agent_api(self, server: str, command: str, params: dict = None) -> dict:
-        """Execute monitoring command - simple and clean."""
+        """Execute monitoring command using improved architecture."""
         if params is None:
             params = {}
+            
         try:
-            url = f"http://{server}.{self.MONITORING_DOMAIN}:8090/execute"
-            payload = {"name": command, "params": params}
-            response = requests.post(url, json=payload, timeout=5)
+            # Get command specification
+            command_spec = self.COMMAND_SPECS[command]
+            
+            # Discover agent for this server
+            agent_url = self._discover_agent(server)
+            
+            # Build the actual command
+            actual_command = self._build_command(command_spec, params)
+            
+            # Send constructed command to agent (new payload format)
+            payload = {
+                "command": actual_command,
+                "backend": command_spec["backend"],
+                "timeout": command_spec.get("timeout", 30)
+            }
+            
+            timeout = self.config["agent_discovery"]["timeout"]
+            response = requests.post(f"{agent_url}/execute", json=payload, timeout=timeout)
             return response.json()
+            
         except Exception as e:
             return {"error": str(e)}
 
@@ -245,21 +257,56 @@ class SAPMonitoringAgent:
         chat_history.append({"role": "assistant", "content": final_response})
         return final_response
 
+    def _load_config(self, config_file: str) -> dict:
+        """Load configuration from YAML file."""
+        try:
+            # Get the directory of the current script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(script_dir, config_file)
+            
+            with open(config_path, 'r') as file:
+                config = yaml.safe_load(file)
+                
+            # Validate required sections
+            if "commands" not in config:
+                raise ValueError("Missing 'commands' section in configuration file")
+            if "monitoring" not in config:
+                raise ValueError("Missing 'monitoring' section in configuration file")
+                
+            return config
+            
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file '{config_file}' not found. Please ensure it exists in the same directory as the script.")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML syntax in configuration file: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Error loading configuration: {e}")
 
 # ------------------------
 # Usage Examples
 # ------------------------
 def main():
     """Interactive SAP monitoring chat interface."""
-    agent = SAPMonitoringAgent(
-        api_key="YOUR_KEY",
-        azure_endpoint="https://your-endpoint.openai.azure.com/"
-    )
-    
-    print("=== SAP Monitoring Assistant ===")
-    print("Type your monitoring requests or 'quit' to exit")
-    print("Examples: 'Check CPU on hana01', 'Get memory usage for server02'")
-    print("-" * 50)
+    try:
+        agent = SAPMonitoringAgent(
+            api_key="YOUR_KEY",
+            azure_endpoint="https://your-endpoint.openai.azure.com/",
+            config_file="commands.yaml"  # Optional: defaults to commands.yaml
+        )
+        
+        print("=== SAP Monitoring Assistant ===")
+        print(f"Loaded {len(agent.COMMAND_SPECS)} commands from configuration")
+        print("Type your monitoring requests or 'quit' to exit")
+        print("Examples: 'Check CPU on hana01', 'Get memory usage for server02'")
+        print("-" * 50)
+        
+    except Exception as e:
+        print(f"Failed to initialize SAP Monitoring Agent: {e}")
+        print("\nPlease ensure:")
+        print("1. PyYAML is installed: pip install pyyaml")
+        print("2. commands.yaml exists in the same directory")
+        print("3. Your Azure OpenAI credentials are correct")
+        return
     
     # Initialize chat history with system prompt (added once!)
     chat_history = [{"role": "system", "content": agent.system_prompt}]

@@ -1,0 +1,7 @@
+# Core dependencies for SAP Monitoring LLM Chatbot
+requests>=2.28.0
+langchain-openai>=0.1.0
+pyyaml>=6.0
+
+# Optional dependencies for enhanced functionality
+# langchain>=0.1.0  # If you need additional LangChain features

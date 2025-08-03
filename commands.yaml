@@ -1,0 +1,63 @@
+# SAP Monitoring Commands Configuration
+# This file defines all available monitoring commands, their parameters, and execution details
+# Adding new commands here requires no code changes - they will be automatically loaded
+
+commands:
+  cpu_info:
+    description: "Get current CPU usage"
+    params: {}
+    required: []  # No additional params required beyond server
+    agent_command: "top -bn1 | grep 'Cpu(s)' | head -1"
+    backend: "shell"
+    timeout: 30
+
+  memory_info:
+    description: "Get current memory usage"
+    params: {}
+    required: []  # No additional params required beyond server
+    agent_command: "free -h"
+    backend: "shell"
+    timeout: 30
+
+  get_process_list:
+    description: "Get list of running processes for a given instance"
+    params:
+      instance: "00"
+      filter: "SAP*"
+      limit: "50"
+    required: ["instance"]  # instance required, filter/limit optional
+    agent_command: "execute soap call"
+    backend: "soap"
+    timeout: 60
+
+  disk_usage:
+    description: "Get disk usage stats for a path"
+    params:
+      path: "/hana"
+      threshold: "80"
+    required: ["path"]  # path required, threshold optional
+    agent_command: "df -h {{.path}}"
+    backend: "shell"
+    timeout: 30
+
+  # Example of how easy it is to add new commands:
+  # sap_system_status:
+  #   description: "Check SAP system status"
+  #   params:
+  #     instance: "00"
+  #     client: "100"
+  #   required: ["instance"]
+  #   agent_command: "sapcontrol -nr {{.instance}} -function GetSystemInstanceList"
+  #   backend: "shell"
+  #   timeout: 45
+
+# Configuration for agent discovery and routing
+agent_discovery:
+  default_port: 8090
+  timeout: 5
+  retry_attempts: 3
+  
+# Domain configuration
+monitoring:
+  domain: "mybank.net"
+  protocol: "http"
