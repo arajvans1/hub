@@ -1,0 +1,82 @@
+{
+  "PRD": {
+    "application_sid": "PRD",
+    "description": "Production System",
+    "app_servers": {
+      "ascs": ["ascs01.prd.local"],
+      "pas": ["pas01.prd.local"],
+      "aas": ["aas01.prd.local", "aas02.prd.local"]
+    },
+    "database": {
+      "hana_sid": "H01",
+      "tenant_db": "PRD",
+      "hana_hosts": ["hana01.prd.local", "hana02.prd.local"]
+    },
+    "ports": {
+      "http": 8000,
+      "https": 44300,
+      "rfc": 3300
+    },
+    "client": "100"
+  },
+  "QAS": {
+    "application_sid": "QAS",
+    "description": "Quality Assurance System",
+    "app_servers": {
+      "ascs": ["ascs01.qas.local"],
+      "pas": ["pas01.qas.local"],
+      "aas": []
+    },
+    "database": {
+      "hana_sid": "H02",
+      "tenant_db": "QAS",
+      "hana_hosts": ["hana01.qas.local"]
+    },
+    "ports": {
+      "http": 8000,
+      "https": 44300,
+      "rfc": 3300
+    },
+    "client": "100"
+  },
+  "DEV": {
+    "application_sid": "DEV",
+    "description": "Development System",
+    "app_servers": {
+      "ascs": ["ascs01.dev.local"],
+      "pas": ["pas01.dev.local"],
+      "aas": []
+    },
+    "database": {
+      "hana_sid": "H03",
+      "tenant_db": "DEV",
+      "hana_hosts": ["hana01.dev.local"]
+    },
+    "ports": {
+      "http": 8000,
+      "https": 44300,
+      "rfc": 3300
+    },
+    "client": "100"
+  },
+  "SBX": {
+    "application_sid": "SBX",
+    "description": "Sandbox System",
+    "app_servers": {
+      "ascs": ["ascs01.sbx.local"],
+      "pas": ["pas01.sbx.local"],
+      "aas": []
+    },
+    "database": {
+      "hana_sid": "H04",
+      "tenant_db": "SBX",
+      "hana_hosts": ["hana01.sbx.local"]
+    },
+    "ports": {
+      "http": 8000,
+      "https": 44300,
+      "rfc": 3300
+    },
+    "client": "100"
+  }
+}

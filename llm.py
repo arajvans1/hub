@@ -1,11 +1,13 @@
 import json
 from typing import List, Dict, Any
+from pathlib import Path
 from langchain_openai import AzureChatOpenAI
 
 from command_loader import CommandLoader
 from command_builder import CommandBuilder
 from agent import Agent
 from function_schema_builder import FunctionSchemaBuilder
+from sid_resolver import SIDResolver
 
 
 # Shared singletons - created once and reused
@@ -16,11 +18,15 @@ class SharedResources:
         self.command_builder = None
         self.agent = None
         self.function_schema_builder = None
+        self.sid_resolver = None
         self.tools = None
         self.system_prompt = None
         self.initialized = False
     
-    def initialize(self, commands_file: str = "commands.yaml"):
+    def initialize(self, 
+                   commands_file: str = "config/commands.yaml",
+                   landscape_file: str = "config/landscape.json",
+                   system_prompt_file: str = "config/system_prompt.txt"):
         """Initialize all shared resources"""
         if self.initialized:
             return
@@ -28,6 +34,9 @@ class SharedResources:
         # Create shared objects once
         self.commands_loader = CommandLoader(commands_file)
         commands = self.commands_loader.get_commands()
+        
+        # Initialize SID resolver for landscape management
+        self.sid_resolver = SIDResolver(landscape_file)
         
         # Hard-coded monitoring domain (not part of function schemas)
         monitoring_domain = "mybank.net"
@@ -37,23 +46,35 @@ class SharedResources:
         self.function_schema_builder = FunctionSchemaBuilder(commands)
         self.tools = self.function_schema_builder.build_function_schemas()
         
-        # System prompt
-        self.system_prompt = """You are a SAP Monitoring Assistant with access to system monitoring tools.
-
-## Instructions:
-- Use the available monitoring functions to check server status
-- Provide explanations and analysis in natural language
-- You can call multiple monitoring commands in sequence
-- Always interpret and explain the monitoring results to the user
-
-## Examples:
-User: "Check CPU and disk usage on server01"
-Response: I'll check both CPU and disk usage for server01.
-[Function calls will be made automatically based on available tools]
-Then provide analysis of both results."""
+        # Load system prompt from config file
+        self.system_prompt = self._load_system_prompt(system_prompt_file)
         
         self.initialized = True
         print(f"Shared resources initialized with {len(commands)} commands")
+    
+    def _load_system_prompt(self, system_prompt_file: str) -> str:
+        """Load system prompt from config file."""
+        try:
+            # Get the directory of the current script
+            script_dir = Path(__file__).parent
+            prompt_path = script_dir / system_prompt_file
+            
+            with open(prompt_path, 'r', encoding='utf-8') as file:
+                prompt_content = file.read().strip()
+            
+            print(f"Loaded system prompt from {prompt_path}")
+            return prompt_content
+            
+        except FileNotFoundError:
+            error_msg = f"System prompt file not found: {system_prompt_file}"
+            print(f"Warning: {error_msg}")
+            # Fallback to a basic prompt
+            return "You are a SAP S/4HANA Monitoring Assistant. Use the available functions to help monitor SAP systems."
+        except Exception as e:
+            error_msg = f"Error loading system prompt: {e}"
+            print(f"Warning: {error_msg}")
+            # Fallback to a basic prompt
+            return "You are a SAP S/4HANA Monitoring Assistant. Use the available functions to help monitor SAP systems."
 
 
 class SAPMonitoringAgent:
@@ -91,37 +112,81 @@ class SAPMonitoringAgent:
         self.system_prompt = self.shared.system_prompt
     
     def _execute_tool_call(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a function tool call - handles command-specific functions"""
+        """Execute a function tool call - handles both SID functions and monitoring commands"""
         function_name = tool_call["name"]
         function_args = tool_call["args"]  # Already a dict, no need to json.loads()
         
-        # Function name IS the command name (cpu_info, memory_info, disk_usage, etc.)
-        command = function_name
+        # Get command specification from CommandLoader
+        command_spec = self.shared.commands_loader.get_command_spec(function_name)
+        if not command_spec:
+            return {"error": f"Unknown command: {function_name}"}
+        
+        # Handle SID resolution functions
+        if command_spec.get("backend") == "sid_resolver":
+            try:
+                if function_name == "get_available_sids":
+                    available_sids = self.shared.sid_resolver.get_available_sids()
+                    return {
+                        "function": function_name,
+                        "available_sids": available_sids,
+                        "count": len(available_sids)
+                    }
+                elif function_name == "get_all_hosts":
+                    sid = function_args.get("sid")
+                    if not sid:
+                        return {"error": "SID parameter is required"}
+                    hosts = self.shared.sid_resolver.get_all_hosts(sid)
+                elif function_name == "get_app_hosts":
+                    sid = function_args.get("sid")
+                    if not sid:
+                        return {"error": "SID parameter is required"}
+                    hosts = self.shared.sid_resolver.get_app_hosts(sid)
+                elif function_name == "get_hana_hosts":
+                    sid = function_args.get("sid")
+                    if not sid:
+                        return {"error": "SID parameter is required"}
+                    hosts = self.shared.sid_resolver.get_hana_hosts(sid)
+                else:
+                    return {"error": f"Unknown SID function: {function_name}"}
+                
+                # For functions that return hosts
+                if function_name != "get_available_sids":
+                    return {
+                        "sid": sid,
+                        "function": function_name,
+                        "hosts": hosts,
+                        "count": len(hosts)
+                    }
+                    
+            except Exception as e:
+                return {"error": f"Failed to execute SID function '{function_name}': {str(e)}"}
+        
+        # Handle regular monitoring commands
         server = function_args.get("server")
+        if not server:
+            return {"error": "Server parameter is required for monitoring commands"}
         
         # Extract parameters (everything except 'server')
         params = {k: v for k, v in function_args.items() if k != "server"}
         
         # Validate command exists and parameters are valid using shared command builder
-        if not self.shared.command_builder.validate_command(command, params):
-            return {"error": f"Invalid command '{command}' or parameters: {params}"}
-        
-        # Get command specification from CommandLoader
-        command_spec = self.shared.commands_loader.get_command_spec(command)
-        if not command_spec:
-            return {"error": f"Unknown command: {command}"}
+        if not self.shared.command_builder.validate_command(function_name, params):
+            return {"error": f"Invalid command '{function_name}' or parameters: {params}"}
         
         # Build the actual command using shared command builder
         actual_command = self.shared.command_builder.build_command(command_spec, params)
         
         # Execute monitoring command via shared agent with error handling
         try:
-            return self.shared.agent.call_agent_api(
+            result = self.shared.agent.call_agent_api(
                 server=server,
                 command=actual_command,
                 backend=command_spec["backend"],
                 timeout=command_spec.get("timeout", 30)
             )
+            
+            return result
+            
         except Exception as e:
             return {"error": f"Agent API call failed: {str(e)}"}
 
@@ -208,12 +273,18 @@ def main():
     
     # Initialize shared resources ONCE at startup
     try:
-        shared_resources.initialize(commands_file="commands.yaml")
+        shared_resources.initialize(
+            commands_file="config/commands.yaml",
+            landscape_file="config/landscape.json",
+            system_prompt_file="config/system_prompt.txt"
+        )
     except Exception as e:
         print(f"Failed to initialize shared resources: {e}")
         print("\nPlease ensure:")
         print("1. PyYAML is installed: pip install pyyaml")
-        print("2. commands.yaml exists in the same directory")
+        print("2. config/commands.yaml exists")
+        print("3. config/landscape.json exists")
+        print("4. config/system_prompt.txt exists")
         return
     
     # Now create lightweight agent - passing shared resources explicitly
@@ -224,11 +295,14 @@ def main():
             shared_resources=shared_resources  # Explicit dependency injection
         )
         
-        print("=== SAP Monitoring Assistant ===")
-        print(f"Loaded {len(shared_resources.commands_loader.get_commands())} commands from configuration")
-        print("Type your monitoring requests or 'quit' to exit")
-        print("Examples: 'Check CPU on hana01', 'Get memory usage for server02'")
-        print("-" * 50)
+        print("=== SAP S/4HANA Monitoring Assistant ===")
+        print(f"Loaded {len(shared_resources.commands_loader.get_commands())} monitoring commands")
+        print(f"Available SAP Systems (SIDs): {', '.join(shared_resources.sid_resolver.get_available_sids())}")
+        print("\nType your monitoring requests or 'quit' to exit")
+        print("Examples:")
+        print("  - 'Check status of server01' (direct hostname)")
+        print("  - 'show available SIDs'")
+        print("-" * 60)
         
     except Exception as e:
         print(f"Failed to initialize SAP Monitoring Agent: {e}")

@@ -15,11 +15,20 @@ class FunctionSchemaBuilder:
         schemas = []
         
         for cmd, spec in self.command_specs.items():
-            # Build parameter properties for ALL available parameters
-            param_properties = {"server": {"type": "string", "description": "Server name to monitor"}}
-            
-            # Start with server as always required
-            required_params = ["server"]
+            # Check if this is a SID resolution function
+            if spec.get("backend") == "sid_resolver":
+                if cmd == "get_available_sids":
+                    # get_available_sids doesn't need any parameters
+                    param_properties = {}
+                    required_params = []
+                else:
+                    # Other SID functions use 'sid' parameter
+                    param_properties = {"sid": {"type": "string", "description": "SAP System ID (e.g., PRD, QAS, DEV, SBX)"}}
+                    required_params = ["sid"]
+            else:
+                # Regular monitoring commands use 'server' parameter
+                param_properties = {"server": {"type": "string", "description": "Server hostname to monitor"}}
+                required_params = ["server"]
             
             # Add all parameters from params (both required and optional)
             for param_name, default_val in spec.get("params", {}).items():
@@ -37,7 +46,7 @@ class FunctionSchemaBuilder:
                 "type": "function",
                 "function": {
                     "name": cmd,
-                    "description": f"{spec['description']} on specified server",
+                    "description": f"{spec['description']}",
                     "parameters": {
                         "type": "object",
                         "properties": param_properties,

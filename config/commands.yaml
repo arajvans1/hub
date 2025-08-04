@@ -3,6 +3,40 @@
 # Adding new commands here requires no code changes - they will be automatically loaded
 
 commands:
+  # SID Discovery and Resolution Functions - Called by LLM to work with SAP System IDs
+  get_available_sids:
+    description: "Get list of all available SAP System IDs (SIDs) in the landscape"
+    params: {}
+    required: []
+    agent_command: "sid_resolver_function"
+    backend: "sid_resolver"
+    timeout: 5
+
+  get_all_hosts:
+    description: "Get all hosts (application servers + database) for a SAP System ID"
+    params: {}
+    required: []
+    agent_command: "sid_resolver_function"
+    backend: "sid_resolver"
+    timeout: 5
+
+  get_app_hosts:
+    description: "Get only application server hosts for a SAP System ID"
+    params: {}
+    required: []
+    agent_command: "sid_resolver_function"
+    backend: "sid_resolver"
+    timeout: 5
+
+  get_hana_hosts:
+    description: "Get HANA database hosts for a SAP System ID"
+    params: {}
+    required: []
+    agent_command: "sid_resolver_function"
+    backend: "sid_resolver"
+    timeout: 5
+
+  # Monitoring Commands - Called by LLM on specific hosts
   cpu_info:
     description: "Get current CPU usage"
     params: {}
