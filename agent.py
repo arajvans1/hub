@@ -25,10 +25,28 @@ class Agent:
             }
             
             response = requests.post(url, json=payload, timeout=5)
-            return response.json()
             
+            # Check for HTTP errors (404, 500, etc.)
+            if response.status_code != 200:
+                return {
+                    "error": f"HTTP {response.status_code}: {response.reason}",
+                    "details": response.text if response.text else "No additional details"
+                }
+            
+            # Try to parse JSON response
+            try:
+                return response.json()
+            except ValueError as json_error:
+                return {
+                    "error": f"Invalid JSON response from agent",
+                    "details": f"JSON parse error: {str(json_error)}",
+                    "raw_response": response.text[:200]  # First 200 chars
+                }
+            
+        except requests.exceptions.RequestException as e:
+            return {"error": f"Network error: {str(e)}"}
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": f"Unexpected error: {str(e)}"}
     
     def discover_agent(self, server: str) -> str:
         """Discover the appropriate agent for a server. Future implementation."""

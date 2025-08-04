@@ -114,13 +114,16 @@ class SAPMonitoringAgent:
         # Build the actual command using shared command builder
         actual_command = self.shared.command_builder.build_command(command_spec, params)
         
-        # Execute monitoring command via shared agent
-        return self.shared.agent.call_agent_api(
-            server=server,
-            command=actual_command,
-            backend=command_spec["backend"],
-            timeout=command_spec.get("timeout", 30)
-        )
+        # Execute monitoring command via shared agent with error handling
+        try:
+            return self.shared.agent.call_agent_api(
+                server=server,
+                command=actual_command,
+                backend=command_spec["backend"],
+                timeout=command_spec.get("timeout", 30)
+            )
+        except Exception as e:
+            return {"error": f"Agent API call failed: {str(e)}"}
 
     def chat(self, chat_history: List[dict], max_steps: int = 3) -> str:
         """
