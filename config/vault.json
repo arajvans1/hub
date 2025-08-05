@@ -1,0 +1,4 @@
+{
+  "azure_openai_api_key": "YOUR_API_KEY_HERE",
+  "azure_openai_endpoint": "https://your-resource.openai.azure.com/"
+}

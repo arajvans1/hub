@@ -15,42 +15,48 @@ class FunctionSchemaBuilder:
         schemas = []
         
         for cmd, spec in self.command_specs.items():
-            # Check if this is a SID resolution function
-            if spec.get("backend") == "sid_resolver":
-                if cmd == "get_available_sids":
-                    # get_available_sids doesn't need any parameters
-                    param_properties = {}
-                    required_params = []
-                else:
-                    # Other SID functions use 'sid' parameter
-                    param_properties = {"sid": {"type": "string", "description": "SAP System ID (e.g., PRD, QAS, DEV, SBX)"}}
-                    required_params = ["sid"]
-            else:
-                # Regular monitoring commands use 'server' parameter
-                param_properties = {"server": {"type": "string", "description": "Server hostname to monitor"}}
-                required_params = ["server"]
+            param_properties = {}
             
-            # Add all parameters from params (both required and optional)
-            for param_name, default_val in spec.get("params", {}).items():
-                is_required = param_name in spec.get("required", [])
-                param_properties[param_name] = {
-                    "type": "string",
-                    "description": f"{'Required' if is_required else 'Optional'} parameter for {cmd} command (default: {default_val})"
+            # Add standard parameter descriptions for common parameters
+            standard_params = {
+                "sid": {
+                    "type": "string", 
+                    "description": "SAP System ID (e.g., PRD, QAS, DEV, SBX)"
+                },
+                "server": {
+                    "type": "string", 
+                    "description": "Server hostname to monitor"
                 }
+            }
             
-            # Add only the required parameters to the required array
-            required_params.extend(spec.get("required", []))
+            # Add required parameters with standard descriptions if available
+            for param_name in spec.get("required", []):
+                if param_name in standard_params:
+                    param_properties[param_name] = standard_params[param_name]
+                else:
+                    param_properties[param_name] = {
+                        "type": "string",
+                        "description": f"Required parameter for {cmd} command"
+                    }
             
-            # Create function schema with command name directly
+            # Add optional parameters from params section
+            for param_name, default_val in spec.get("params", {}).items():
+                if param_name not in param_properties:  # Don't overwrite required params
+                    param_properties[param_name] = {
+                        "type": "string",
+                        "description": f"Optional parameter for {cmd} command (default: {default_val})"
+                    }
+            
+            # Create function schema
             schemas.append({
                 "type": "function",
                 "function": {
                     "name": cmd,
-                    "description": f"{spec['description']}",
+                    "description": spec['description'],
                     "parameters": {
                         "type": "object",
                         "properties": param_properties,
-                        "required": required_params
+                        "required": spec.get("required", [])
                     }
                 }
             })

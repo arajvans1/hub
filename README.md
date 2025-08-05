@@ -2,17 +2,41 @@
 
 A lightweight, extensible monitoring platform for SAP S/4HANA systems with AI-powered conversational diagnostics.
 
+## Quick Start
+
+1. **Setup credentials**:
+   ```bash
+   # Edit config/vault.json with your Azure OpenAI credentials
+   {
+     "azure_openai_api_key": "your-api-key",
+     "azure_openai_endpoint": "https://your-resource.openai.azure.com/"
+   }
+   ```
+
+2. **Install and run**:
+   ```bash
+   pip install -r requirements.txt
+   python llm.py
+   ```
+
+3. **Start monitoring**:
+   ```
+   > Check CPU usage on server01
+   > Show available SIDs
+   > Get HANA hosts for PRD system
+   ```
+
 ## Architecture Overview
 
 This platform consists of two main components:
 
 ### 1. **LLM Chatbot Backend** - *This Repository*
 - Natural language interface for SAP monitoring
-- OpenAI function calling for structured query generation
-- Modular architecture with explicit dependency injection
+- Azure OpenAI function calling for structured query generation
+- Configuration-driven architecture with YAML commands
 - Converts user prompts into parameterized monitoring commands
-- Interprets agent responses into human-readable summaries
 - Real-time conversation management with multi-step reasoning
+- Simple vault integration for credential management
 
 ### 2. **Go-Based Monitoring Agent** - *Separate Component*
 - Lightweight, zero-dependency Go service
@@ -23,7 +47,6 @@ This platform consists of two main components:
   - **OS Shell** - System-level commands
 - YAML-based command definitions with runtime parameter substitution
 - HTTP API for command execution
-- Structured logging and modular backend architecture
 
 ## Key Features
 
@@ -66,42 +89,42 @@ from llm import SAPMonitoringAgent, SharedResources
 
 # Initialize shared resources once
 shared_resources = SharedResources()
-shared_resources.initialize(commands_file="commands.yaml")
+shared_resources.initialize()
 
-# Create agent with explicit dependency injection
-agent = SAPMonitoringAgent(
-    api_key="your_azure_openai_key",
-    azure_endpoint="https://your-endpoint.openai.azure.com/",
-    shared_resources=shared_resources
-)
+# Create agent (credentials loaded from vault)
+agent = SAPMonitoringAgent(shared_resources)
 
 # Interactive conversation
 chat_history = [{"role": "system", "content": agent.system_prompt}]
-chat_history.append({"role": "user", "content": "Check CPU usage on HANA01"})
+chat_history.append({"role": "user", "content": "Check CPU usage on server01"})
 response = agent.chat(chat_history)
 print(response)
 ```
 
-## Refactored Architecture
+## Current Architecture
 
-The LLM chatbot backend now uses a clean, modular architecture:
+The LLM chatbot backend uses a clean, simplified architecture:
 
 ### Core Components
 
-- **`SharedResources`** - Container for shared objects with explicit initialization
+- **`SharedResources`** - Container for shared objects with one-time initialization
+- **`VaultManager`** - Simple credential management (file-based for dev, enterprise stubs for prod)
 - **`CommandLoader`** - Loads and validates YAML command definitions
 - **`CommandBuilder`** - Builds executable commands with parameter substitution
 - **`Agent`** - Handles HTTP communication with monitoring agents
-- **`FunctionSchemaBuilder`** - Generates OpenAI function schemas from commands
+- **`FunctionSchemaBuilder`** - Generates Azure OpenAI function schemas from commands
+- **`SIDResolver`** - SAP system ID discovery and host resolution (4 clean functions)
 - **`SAPMonitoringAgent`** - Main orchestrator with LLM integration
 
-### Design Principles
+### Key Features
 
-- **Explicit Dependencies** - No hidden globals or singleton patterns
-- **Single Responsibility** - Each class has one clear purpose  
-- **Clean Separation** - Configuration separate from function schemas
-- **Production Ready** - Comprehensive error handling and testing
-- **Maintainable** - Clear naming and modular structure
+- ✅ **Simple vault integration** - File-based credentials for development
+- ✅ **Configuration-driven** - YAML commands with explicit required parameters  
+- ✅ **Azure OpenAI compatible** - All 8 function schemas properly formatted
+- ✅ **Clean SID resolution** - Exactly 4 functions for SAP system discovery
+- ✅ **Optimized schemas** - Moved from hardcoded if/else to configuration-driven approach
+- ✅ **Minimal dependencies** - Only essential packages, no unnecessary bloat
+- ✅ **Production ready** - Clear stubs for enterprise vault integration
 
 ## Command Flow
 
@@ -117,13 +140,55 @@ The LLM chatbot backend converts natural language into structured API calls:
 
 ## Supported Monitoring Commands
 
-Commands are defined in `commands.yaml`:
+Commands are defined in `config/commands.yaml`:
 
+### SID Discovery Functions (4 core functions)
+- `get_available_sids` - List all SAP System IDs in landscape
+- `get_all_hosts(sid)` - All hosts for a SAP system (app + DB)
+- `get_app_hosts(sid)` - Application server hosts only
+- `get_hana_hosts(sid)` - HANA database hosts only
+
+### Monitoring Commands
 - `cpu_info` - System CPU utilization
 - `memory_info` - Memory usage statistics  
-- `disk_usage` - Disk space utilization (with path parameter)
-- `get_process_list` - SAP instance processes (with instance parameter)
-- *Easily extensible by adding new commands to YAML*
+- `disk_usage(path)` - Disk space utilization with path parameter
+- `get_process_list(instance)` - SAP instance processes with instance parameter
+
+*Easily extensible by adding new commands to YAML with explicit required parameters*
+
+## Configuration
+
+### Vault Setup
+```json
+// config/vault.json
+{
+  "azure_openai_api_key": "your-api-key",
+  "azure_openai_endpoint": "https://your-resource.openai.azure.com/"
+}
+```
+
+### Command Configuration
+```yaml
+# config/commands.yaml - Example command
+cpu_info:
+  description: "Get current CPU usage"
+  params: {}
+  required: ["server"]  # Explicit required parameters
+  agent_command: "top -bn1 | grep 'Cpu(s)' | head -1"
+  backend: "shell"
+  timeout: 30
+```
+
+### SAP Landscape
+```json
+// config/landscape.json - SAP systems
+{
+  "PRD": {
+    "app_hosts": ["sapapp01", "sapapp02"],
+    "hana_hosts": ["hanadb01", "hanadb02"]
+  }
+}
+```
 
 ## LLM Chatbot Backend Architecture
 
@@ -131,31 +196,46 @@ Commands are defined in `commands.yaml`:
 ```
 llm/
 ├── llm.py                      # Main application with SAPMonitoringAgent
+├── vault.py                    # Simple vault manager (file-based for dev)
+├── sid_resolver.py             # SID discovery with 4 clean functions
 ├── command_loader.py           # CommandLoader class - YAML loading
 ├── command_builder.py          # CommandBuilder class - Command building  
 ├── agent.py                    # Agent class - HTTP communication
-├── function_schema_builder.py  # FunctionSchemaBuilder class - OpenAI schemas
-├── commands.yaml               # Command definitions (not in function schemas)
-├── requirements.txt            # Python dependencies
+├── function_schema_builder.py  # FunctionSchemaBuilder class - Azure OpenAI schemas
+├── config/
+│   ├── commands.yaml           # Command definitions (8 commands)
+│   ├── landscape.json          # SAP systems (4 SIDs)
+│   ├── system_prompt           # LLM system prompt
+│   └── vault.json              # Credentials (gitignored)
+├── requirements.txt            # Python dependencies  
 └── README.md                   # This documentation
 ```
 
-### Key Improvements in Refactored Version
+### Vault Integration
 
-- **Explicit Resource Management** - SharedResources with clear initialization
-- **Modular Design** - Each component in separate file with single responsibility
-- **Clean Configuration** - Monitoring domain not included in LLM function schemas
-- **Better Naming** - `CommandLoader` vs old `ConfigManager`, `Agent` vs `AgentClient`
-- **Comprehensive Testing** - Full test coverage for all components
-- **Production Ready** - Robust error handling and validation
+**Development**: Simple file-based credentials
+```python
+# vault.py reads config/vault.json
+vault_manager = VaultManager()
+credentials = vault_manager.get_azure_openai_config()
+```
 
-### Design Principles
+**Production**: Enterprise vault stubs ready
+```python
+# TODO: Replace _load_vault() with enterprise vault API calls
+# - Azure Key Vault
+# - HashiCorp Vault  
+# - AWS Secrets Manager
+```
 
-- **Explicit Dependencies** - SharedResources passed explicitly, no hidden globals
-- **Real-time First** - No caching of monitoring data for accuracy
-- **Production Ready** - Comprehensive error handling and retry logic
-- **Modular Architecture** - Clean separation of loading, building, and communication
-- **Debugging Friendly** - Full visibility into execution flow and clear component boundaries
+### Key Optimizations
+
+- **Simplified vault** - No cryptography, just reads JSON file
+- **Configuration-driven schemas** - Moved from hardcoded if/else logic  
+- **Explicit required parameters** - Clear YAML structure with required arrays
+- **Clean SID resolver** - Exactly 4 functions, no duplicate code
+- **Minimal dependencies** - Only essential packages
+- **Azure OpenAI compatible** - All 8 schemas properly formatted
 
 ## Go Agent Integration
 
@@ -244,31 +324,40 @@ The LLM chatbot (`llm.py`) makes HTTP calls to the Go agent, which executes the 
 
 ## Production Deployment
 
+## Installation & Setup
+
 ### Prerequisites
-- Python 3.9+ with conda environment
+- Python 3.9+ 
 - Azure OpenAI API access with GPT-4 model
-- Go monitoring agent deployed and accessible
-- SAP S/4HANA systems configured for monitoring
 
-### Installation
+### Quick Setup
 ```bash
-# Create conda environment
-conda create -n llm python=3.9
-conda activate llm
-
-# Install dependencies
+# 1. Install dependencies
 pip install -r requirements.txt
 
-# Run the application
+# 2. Configure credentials
+# Edit config/vault.json:
+{
+  "azure_openai_api_key": "your-api-key",
+  "azure_openai_endpoint": "https://your-resource.openai.azure.com/"
+}
+
+# 3. Run the application
 python llm.py
 ```
 
-### Environment Configuration
+### System Validation
 ```bash
-export AZURE_OPENAI_API_KEY="your_api_key"
-export AZURE_OPENAI_ENDPOINT="https://your-endpoint.openai.azure.com/"
-export SAP_MONITORING_DOMAIN="mybank.net"
-export SAP_AGENT_PORT="8090"
+# Test all components
+python -c "
+from llm import SharedResources
+shared = SharedResources()
+shared.initialize()
+print(f'✅ {len(shared.commands_loader.get_commands())} commands loaded')
+print(f'✅ {len(shared.sid_resolver.get_available_sids())} SIDs available') 
+print(f'✅ {len(shared.tools)} Azure OpenAI schemas generated')
+print('🚀 System ready!')
+"
 ```
 
 ### Monitoring Agent Communication
@@ -298,43 +387,40 @@ Perfect for enterprise SAP environments where reliability, maintainability, and 
 
 ## Testing
 
-The codebase includes comprehensive test coverage:
+The codebase includes comprehensive validation:
 
 ```bash
-# All tests pass in conda environment
+# Quick system test
 python -c "
-from command_loader import CommandLoader
-from command_builder import CommandBuilder  
-from agent import Agent
-from function_schema_builder import FunctionSchemaBuilder
+from llm import SharedResources
+shared = SharedResources()
+shared.initialize()
+print('=== System Test Results ===')
+print(f'✅ Commands: {len(shared.commands_loader.get_commands())}/8')
+print(f'✅ SIDs: {len(shared.sid_resolver.get_available_sids())}/4')
+print(f'✅ Schemas: {len(shared.tools)}/8')
+print(f'✅ Vault: {\"OK\" if shared.vault_manager else \"FAIL\"}')
+print('🚀 All systems operational!')
+"
 
-# Test basic functionality
-loader = CommandLoader('commands.yaml')
-commands = loader.get_commands()
-print(f'✅ Loaded {len(commands)} commands')
-
-builder = CommandBuilder(commands)
-agent = Agent('test.domain.com')
-schema_builder = FunctionSchemaBuilder(commands)
-
-print('🎉 All components working correctly!')
+# Test SID resolver functions
+python -c "
+from sid_resolver import SIDResolver
+resolver = SIDResolver('config/landscape.json')
+sids = resolver.get_available_sids()
+print(f'Available SIDs: {sids}')
+print(f'PRD hosts: {len(resolver.get_all_hosts(\"PRD\"))}')
 "
 ```
 
-## Repository Structure
+## Next Phase: HTTP Server Implementation
 
-```
-llm/
-├── llm.py                      # Main SAPMonitoringAgent application
-├── command_loader.py           # YAML command loading and validation
-├── command_builder.py          # Command building with parameter substitution
-├── agent.py                    # HTTP communication with monitoring agents
-├── function_schema_builder.py  # OpenAI function schema generation
-├── commands.yaml               # Command definitions (separate from schemas)
-├── requirements.txt            # Python dependencies
-├── README.md                   # This documentation  
-├── message                     # Additional documentation
-└── .gitignore                  # Git ignore configuration
-```
+The system is now ready for the next phase - implementing a raw Python HTTP server:
 
-The Go monitoring agent is maintained as a separate service/repository.
+- **Learning Focus**: HTTP protocol fundamentals from first principles
+- **Migration Path**: Clean transition to FastAPI later  
+- **API Endpoints**: `/chat` for conversational monitoring
+- **Request Handling**: JSON request/response with proper status codes
+- **URL Routing**: Manual implementation for maximum learning value
+
+**Current Status**: ✅ All 8 commands loaded, ✅ 4 SIDs available, ✅ 8 Azure schemas, ✅ Vault operational

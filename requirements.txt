@@ -1,5 +1,5 @@
 # Core dependencies for SAP Monitoring LLM Chatbot
-# Updated for refactored architecture with explicit dependencies
+# Updated for simplified vault integration and clean architecture
 
 # HTTP requests for agent communication
 requests>=2.28.0,<3.0.0

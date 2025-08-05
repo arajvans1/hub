@@ -8,6 +8,7 @@ from command_builder import CommandBuilder
 from agent import Agent
 from function_schema_builder import FunctionSchemaBuilder
 from sid_resolver import SIDResolver
+from vault import VaultManager, VaultError
 
 
 # Shared singletons - created once and reused
@@ -19,6 +20,7 @@ class SharedResources:
         self.agent = None
         self.function_schema_builder = None
         self.sid_resolver = None
+        self.vault_manager = None
         self.tools = None
         self.system_prompt = None
         self.initialized = False
@@ -26,10 +28,19 @@ class SharedResources:
     def initialize(self, 
                    commands_file: str = "config/commands.yaml",
                    landscape_file: str = "config/landscape.json",
-                   system_prompt_file: str = "config/system_prompt.txt"):
+                   system_prompt_file: str = "config/system_prompt"):
         """Initialize all shared resources"""
         if self.initialized:
             return
+        
+        # Initialize vault manager first (other components may need secrets)
+        try:
+            self.vault_manager = VaultManager()
+            print("Vault manager initialized")
+        except VaultError as e:
+            print(f"Warning: Vault initialization failed: {e}")
+            print("Continuing without vault - credentials must be provided manually")
+            self.vault_manager = None
             
         # Create shared objects once
         self.commands_loader = CommandLoader(commands_file)
@@ -51,6 +62,22 @@ class SharedResources:
         
         self.initialized = True
         print(f"Shared resources initialized with {len(commands)} commands")
+    
+    def get_azure_openai_credentials(self) -> Dict[str, str]:
+        """
+        Get Azure OpenAI credentials from vault or return empty dict for manual configuration.
+        
+        Returns:
+            Dictionary with api_key and azure_endpoint, or empty dict if vault unavailable
+        """
+        if self.vault_manager:
+            try:
+                return self.vault_manager.get_azure_openai_config()
+            except VaultError as e:
+                print(f"Warning: Could not retrieve Azure OpenAI credentials from vault: {e}")
+        
+        # Return empty dict if vault unavailable - caller should handle manual input
+        return {}
     
     def _load_system_prompt(self, system_prompt_file: str) -> str:
         """Load system prompt from config file."""
@@ -82,13 +109,11 @@ class SAPMonitoringAgent:
     Lightweight SAP monitoring agent that uses explicitly passed shared resources.
     """
     
-    def __init__(self, api_key: str, azure_endpoint: str, shared_resources: SharedResources):
+    def __init__(self, shared_resources: SharedResources):
         """
         Initialize agent with explicitly passed shared resources.
         
         Args:
-            api_key: Azure OpenAI API key
-            azure_endpoint: Azure OpenAI endpoint
             shared_resources: SharedResources instance with all shared objects
         """
         if not shared_resources.initialized:
@@ -97,11 +122,17 @@ class SAPMonitoringAgent:
         # Store reference to shared resources
         self.shared = shared_resources
         
+        # Get credentials from vault
+        vault_credentials = self.shared.get_azure_openai_credentials()
+        
+        if not vault_credentials:
+            raise RuntimeError("No Azure OpenAI credentials found in vault")
+        
         # Only create the LLM client per agent
         self.llm = AzureChatOpenAI(
-            api_key=api_key,
+            api_key=vault_credentials["api_key"],
             api_version="2024-08-01",
-            azure_endpoint=azure_endpoint,
+            azure_endpoint=vault_credentials["azure_endpoint"],
             model="gpt-4",
             max_retries=3,
             timeout=30,
@@ -276,7 +307,7 @@ def main():
         shared_resources.initialize(
             commands_file="config/commands.yaml",
             landscape_file="config/landscape.json",
-            system_prompt_file="config/system_prompt.txt"
+            system_prompt_file="config/system_prompt"
         )
     except Exception as e:
         print(f"Failed to initialize shared resources: {e}")
@@ -287,13 +318,9 @@ def main():
         print("4. config/system_prompt.txt exists")
         return
     
-    # Now create lightweight agent - passing shared resources explicitly
+    # Now create lightweight agent - vault credentials will be used automatically
     try:
-        agent = SAPMonitoringAgent(
-            api_key="YOUR_KEY",
-            azure_endpoint="https://your-endpoint.openai.azure.com/",
-            shared_resources=shared_resources  # Explicit dependency injection
-        )
+        agent = SAPMonitoringAgent(shared_resources=shared_resources)
         
         print("=== SAP S/4HANA Monitoring Assistant ===")
         print(f"Loaded {len(shared_resources.commands_loader.get_commands())} monitoring commands")
@@ -306,7 +333,7 @@ def main():
         
     except Exception as e:
         print(f"Failed to initialize SAP Monitoring Agent: {e}")
-        print("Please ensure your Azure OpenAI credentials are correct")
+        print("Please ensure your vault.json has correct Azure OpenAI credentials")
         return
     
     # Initialize chat history with system prompt (added once!)

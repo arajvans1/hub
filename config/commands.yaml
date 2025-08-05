@@ -7,7 +7,7 @@ commands:
   get_available_sids:
     description: "Get list of all available SAP System IDs (SIDs) in the landscape"
     params: {}
-    required: []
+    required: []  # No parameters needed
     agent_command: "sid_resolver_function"
     backend: "sid_resolver"
     timeout: 5
@@ -15,7 +15,7 @@ commands:
   get_all_hosts:
     description: "Get all hosts (application servers + database) for a SAP System ID"
     params: {}
-    required: []
+    required: ["sid"]  # SID parameter required
     agent_command: "sid_resolver_function"
     backend: "sid_resolver"
     timeout: 5
@@ -23,7 +23,7 @@ commands:
   get_app_hosts:
     description: "Get only application server hosts for a SAP System ID"
     params: {}
-    required: []
+    required: ["sid"]  # SID parameter required
     agent_command: "sid_resolver_function"
     backend: "sid_resolver"
     timeout: 5
@@ -31,7 +31,7 @@ commands:
   get_hana_hosts:
     description: "Get HANA database hosts for a SAP System ID"
     params: {}
-    required: []
+    required: ["sid"]  # SID parameter required
     agent_command: "sid_resolver_function"
     backend: "sid_resolver"
     timeout: 5
@@ -40,7 +40,7 @@ commands:
   cpu_info:
     description: "Get current CPU usage"
     params: {}
-    required: []  # No additional params required beyond server
+    required: ["server"]  # Server hostname required
     agent_command: "top -bn1 | grep 'Cpu(s)' | head -1"
     backend: "shell"
     timeout: 30
@@ -48,7 +48,7 @@ commands:
   memory_info:
     description: "Get current memory usage"
     params: {}
-    required: []  # No additional params required beyond server
+    required: ["server"]  # Server hostname required
     agent_command: "free -h"
     backend: "shell"
     timeout: 30
@@ -59,7 +59,7 @@ commands:
       instance: "00"
       filter: "SAP*"
       limit: "50"
-    required: ["instance"]  # instance required, filter/limit optional
+    required: ["server", "instance"]  # server and instance required, filter/limit optional
     agent_command: "execute soap call"
     backend: "soap"
     timeout: 60
@@ -69,7 +69,7 @@ commands:
     params:
       path: "/hana"
       threshold: "80"
-    required: ["path"]  # path required, threshold optional
+    required: ["server", "path"]  # server and path required, threshold optional
     agent_command: "df -h {{.path}}"
     backend: "shell"
     timeout: 30
