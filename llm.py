@@ -197,15 +197,14 @@ class SAPMonitoringAgent:
         if not server:
             return {"error": "Server parameter is required for monitoring commands"}
         
-        # Extract parameters (everything except 'server')
-        params = {k: v for k, v in function_args.items() if k != "server"}
-        
-        # Validate command exists and parameters are valid using shared command builder
-        if not self.shared.command_builder.validate_command(function_name, params):
-            return {"error": f"Invalid command '{function_name}' or parameters: {params}"}
+        # Validate command exists and parameters are valid using ALL function arguments
+        # (including server, since it may be listed as required in command spec)
+        if not self.shared.command_builder.validate_command(function_name, function_args):
+            return {"error": f"Invalid command '{function_name}' or parameters: {function_args}"}
         
         # Build the actual command using shared command builder
-        actual_command = self.shared.command_builder.build_command(command_spec, params)
+        # (server won't be substituted since command templates don't use {{.server}})
+        actual_command = self.shared.command_builder.build_command(command_spec, function_args)
         
         # Execute monitoring command via shared agent with error handling
         try:

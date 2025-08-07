@@ -2,6 +2,26 @@
 # This file defines all available monitoring commands, their parameters, and execution details
 # Adding new commands here requires no code changes - they will be automatically loaded
 
+# AGENT_COMMAND FORMATS:
+# =====================
+# 1. Inline command (simple):
+#    agent_command: "your shell/database command here"
+#    Example: agent_command: "df -h {{.path}}"
+#
+# 2. File-based command (for complex queries):
+#    agent_command: "file:path/to/file"
+#    
+#    Examples:
+#    - Relative path: agent_command: "file:config/queries/my_query.sql"
+#    - Absolute path: agent_command: "file:/usr/local/sap/queries/system_check.sql"
+#    
+#    Notes:
+#    - Relative paths are resolved from the command_loader.py directory
+#    - Absolute paths are used as-is
+#    - Use this for large SQL queries, complex scripts, etc.
+#    - Parameter substitution ({{.param}}) works in both formats
+#    - Files are loaded once at startup and cached
+
 commands:
   # SID Discovery and Resolution Functions - Called by LLM to work with SAP System IDs
   get_available_sids:
@@ -73,6 +93,31 @@ commands:
     agent_command: "df -h {{.path}}"
     backend: "shell"
     timeout: 30
+
+  # Example of complex database query loaded from file
+  sap_performance_analysis:
+    description: "Run comprehensive SAP performance analysis with blocking session detection"
+    params:
+      cpu_threshold: "10000"
+      memory_threshold: "1048576"
+      wait_threshold: "5000"
+      limit: "50"
+    required: ["server", "cpu_threshold", "memory_threshold"]
+    agent_command: "file:config/queries/sap_performance_analysis.sql"
+    backend: "database"
+    timeout: 120
+
+  # Example of complex query loaded from file
+  user_session_analysis:
+    description: "Analyze user sessions and detect potential issues"
+    params:
+      hours: "2"
+      client: "100"
+      min_sessions: "3"
+    required: ["server", "client"]
+    agent_command: "file:config/queries/user_session_analysis.sql"
+    backend: "database"
+    timeout: 60
 
   # Example of how easy it is to add new commands:
   # sap_system_status:
