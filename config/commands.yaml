@@ -79,7 +79,7 @@ commands:
       instance: "00"
       filter: "SAP*"
       limit: "50"
-    required: ["server", "instance"]  # server and instance required, filter/limit optional
+    required: ["server"]  # Only server required, instance/filter/limit will use defaults
     agent_command: "execute soap call"
     backend: "soap"
     timeout: 60

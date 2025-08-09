@@ -9,6 +9,7 @@ from agent import Agent
 from function_schema_builder import FunctionSchemaBuilder
 from sid_resolver import SIDResolver
 from vault import VaultManager, VaultError
+from tool_executor import ToolExecutor
 
 
 # Shared singletons - created once and reused
@@ -141,89 +142,16 @@ class SAPMonitoringAgent:
         # Direct access to shared resources
         self.tools = self.shared.tools
         self.system_prompt = self.shared.system_prompt
+        
+        # Initialize tool executor
+        self.tool_executor = ToolExecutor(self.shared)
     
     def _execute_tool_call(self, tool_call: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a function tool call - handles both SID functions and monitoring commands"""
-        function_name = tool_call["name"]
-        function_args = tool_call["args"]  # Already a dict, no need to json.loads()
-        
-        # Get command specification from CommandLoader
-        command_spec = self.shared.commands_loader.get_command_spec(function_name)
-        if not command_spec:
-            return {"error": f"Unknown command: {function_name}"}
-        
-        # Handle SID resolution functions
-        if command_spec.get("backend") == "sid_resolver":
-            try:
-                if function_name == "get_available_sids":
-                    available_sids = self.shared.sid_resolver.get_available_sids()
-                    return {
-                        "function": function_name,
-                        "available_sids": available_sids,
-                        "count": len(available_sids)
-                    }
-                elif function_name == "get_all_hosts":
-                    sid = function_args.get("sid")
-                    if not sid:
-                        return {"error": "SID parameter is required"}
-                    hosts = self.shared.sid_resolver.get_all_hosts(sid)
-                elif function_name == "get_app_hosts":
-                    sid = function_args.get("sid")
-                    if not sid:
-                        return {"error": "SID parameter is required"}
-                    hosts = self.shared.sid_resolver.get_app_hosts(sid)
-                elif function_name == "get_hana_hosts":
-                    sid = function_args.get("sid")
-                    if not sid:
-                        return {"error": "SID parameter is required"}
-                    hosts = self.shared.sid_resolver.get_hana_hosts(sid)
-                else:
-                    return {"error": f"Unknown SID function: {function_name}"}
-                
-                # For functions that return hosts
-                if function_name != "get_available_sids":
-                    return {
-                        "sid": sid,
-                        "function": function_name,
-                        "hosts": hosts,
-                        "count": len(hosts)
-                    }
-                    
-            except Exception as e:
-                return {"error": f"Failed to execute SID function '{function_name}': {str(e)}"}
-        
-        # Handle regular monitoring commands
-        server = function_args.get("server")
-        if not server:
-            return {"error": "Server parameter is required for monitoring commands"}
-        
-        # Validate command exists and parameters are valid using ALL function arguments
-        # (including server, since it may be listed as required in command spec)
-        if not self.shared.command_builder.validate_command(function_name, function_args):
-            return {"error": f"Invalid command '{function_name}' or parameters: {function_args}"}
-        
-        # Build the actual command using shared command builder
-        # (server won't be substituted since command templates don't use {{.server}})
-        actual_command = self.shared.command_builder.build_command(command_spec, function_args)
-        
-        # Execute monitoring command via shared agent with error handling
-        try:
-            result = self.shared.agent.call_agent_api(
-                server=server,
-                command=actual_command,
-                backend=command_spec["backend"],
-                timeout=command_spec.get("timeout", 30)
-            )
-            
-            return result
-            
-        except Exception as e:
-            return {"error": f"Agent API call failed: {str(e)}"}
+        """Execute a function tool call using the dedicated ToolExecutor."""
+        return self.tool_executor.execute_tool_call(tool_call)
 
     def chat(self, chat_history: List[dict], max_steps: int = 3) -> str:
-        """
-        Main chat method using OpenAI function calling - much more robust!
-        
+        """        Main chat method using OpenAI function calling - much more robust!
         Args:
             chat_history: Conversation messages including current user input
             max_steps: Maximum reasoning steps
@@ -263,23 +191,38 @@ class SAPMonitoringAgent:
                 ]
             messages.append(assistant_msg)
             
-            # Process any tool calls
+            # Process any tool calls - NOW WITH PARALLEL EXECUTION!
             if tool_calls:
-                for tool_call in tool_calls:
-                    # Execute the tool
-                    result = self._execute_tool_call(tool_call)
-                    
-                    # Add tool result to working messages
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call["id"],
-                        "content": json.dumps(result)
-                    })
+                from concurrent.futures import ThreadPoolExecutor, as_completed
                 
-                # Continue to next step to get final response with tool results
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    # Submit all tool calls for parallel execution
+                    future_to_tool = {
+                        executor.submit(self._execute_tool_call, tool_call): tool_call
+                        for tool_call in tool_calls
+                    }
+                    
+                    # Collect results as they complete
+                    for future in as_completed(future_to_tool):
+                        tool_call = future_to_tool[future]
+                        try:
+                            result = future.result()
+                        except Exception as e:
+                            # Handle errors gracefully
+                            result = {"error": str(e)}
+                        
+                        # Add tool result to working messages (unified for both success and error)
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": json.dumps(result)
+                        })
+            
+            # If we processed tool calls, continue to next step for final response
+            # If no tool calls, this is our final response
+            if tool_calls:
                 continue
             else:
-                # No tool calls - this is our final response
                 final_response = content
                 break
 
