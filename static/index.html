@@ -217,6 +217,9 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
     <div class="navbar">
@@ -301,28 +304,42 @@
                     const data = await response.json();
                     this.chatHistory = data.chat_history || [];
                     this.hideTypingIndicator();
-                    this.addMessage('assistant', data.response);
+                    this.addMessage('assistant', data.response, true);
                 } catch (error) {
                     this.hideTypingIndicator();
                     this.addMessage('assistant', `❌ Connection error: ${error.message}. Make sure FastAPI server is running on port 8001.`);
                 } finally {
                     this.setLoading(false);
+                    this.messageInput.focus(); // Ensure input regains focus after sending
                 }
             }
-            addMessage(role, content) {
+            addMessage(role, content, isMarkdown=false) {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${role}`;
                 const avatar = role === 'user' ? '👤' : '🤖';
                 const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                let formattedContent = content;
+                if (isMarkdown) {
+                    formattedContent = marked.parse(content, {
+                        mangle: false,
+                        headerIds: false
+                    });
+                }
                 messageDiv.innerHTML = `
                     <div class="message-avatar">${avatar}</div>
                     <div class="message-content">
-                        <div>${content}</div>
+                        <div>${formattedContent}</div>
                         <div class="message-time">${time}</div>
                     </div>
                 `;
                 this.messagesContainer.appendChild(messageDiv);
                 this.scrollToBottom();
+                // Highlight code blocks if present
+                if (isMarkdown) {
+                    messageDiv.querySelectorAll('pre code').forEach((block) => {
+                        hljs.highlightElement(block);
+                    });
+                }
             }
             showTypingIndicator() {
                 const typingDiv = document.createElement('div');

@@ -19,3 +19,7 @@ uvicorn
 # Optional dependencies for enhanced functionality
 # langchain>=0.1.0  # If you need additional LangChain features
 # python-dotenv>=1.0.0  # For environment variable management
+
+# Frontend dependencies (served via CDN in index.html):
+# highlight.js
+# marked.js
