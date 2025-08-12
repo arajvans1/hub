@@ -83,20 +83,41 @@ class ToolExecutor:
             return {"error": "Server parameter is required for monitoring commands"}
         
         # Check if command has host type restrictions
-        allowed_host_types = command_spec.get("allowed_host_types", [])
-        if allowed_host_types:
-            host_type = self._determine_host_type(server)
-            if host_type not in allowed_host_types:
-                # Provide helpful error message with suggestions
-                error_msg = f"Command '{function_name}' cannot be executed on {host_type} server '{server}'. "
-                error_msg += f"This command is only allowed on: {', '.join(allowed_host_types)} servers."
+        allowed_host_types = command_spec.get("allowed_host_types", "all")
+        
+        # Find which SID this host belongs to (even for "all" commands, we need to validate the host exists)
+        sid = self.shared.sid_resolver.find_sid_by_host(server)
+        
+        if not sid:
+            return {"error": f"Server '{server}' not found in landscape configuration"}
+        
+        # If "all" is allowed, we've already validated the host exists, so proceed
+        if allowed_host_types != "all":
+            # Get appropriate hosts based on allowed type
+            try:
+                if allowed_host_types == "app":
+                    valid_hosts = self.shared.sid_resolver.get_app_hosts(sid)
+                    host_type_description = "application"
+                elif allowed_host_types == "db":
+                    valid_hosts = self.shared.sid_resolver.get_hana_hosts(sid)
+                    host_type_description = "database"
+                else:
+                    return {"error": f"Invalid allowed_host_types value: {allowed_host_types}"}
                 
-                # Suggest alternative hosts if possible
-                alternative_hosts = self._suggest_alternative_hosts(server, allowed_host_types)
-                if alternative_hosts:
-                    error_msg += f" Try using one of these hosts instead: {', '.join(alternative_hosts)}"
-                
-                return {"error": error_msg}
+                # Check if the provided server is in the valid hosts list
+                if server not in valid_hosts:
+                    error_msg = f"Command '{function_name}' can only be executed on {host_type_description} servers. "
+                    error_msg += f"Server '{server}' is not a {host_type_description} server for SID '{sid}'. "
+                    
+                    if valid_hosts:
+                        error_msg += f"Try using one of these {host_type_description} servers instead: {', '.join(valid_hosts)}"
+                    else:
+                        error_msg += f"No {host_type_description} servers found for SID '{sid}'"
+                    
+                    return {"error": error_msg}
+                    
+            except ValueError as e:
+                return {"error": f"Failed to validate host type: {str(e)}"}
         
         # Validate command exists and parameters are valid using ALL function arguments
         # (including server, since it may be listed as required in command spec)
@@ -120,89 +141,3 @@ class ToolExecutor:
             
         except Exception as e:
             return {"error": f"Agent API call failed: {str(e)}"}
-    
-    def _determine_host_type(self, hostname: str) -> str:
-        """
-        Determine if a hostname is an application server or database server.
-        
-        Args:
-            hostname: The hostname to check
-            
-        Returns:
-            'app' for application servers, 'db' for database servers, 'unknown' if not found
-        """
-        # Check all SIDs in the landscape
-        for sid, system_config in self.shared.sid_resolver.landscape_data.items():
-            # Check if it's an application server
-            app_servers = system_config.get('app_servers', {})
-            for server_type, hosts in app_servers.items():
-                if isinstance(hosts, list) and hostname in hosts:
-                    return 'app'
-                elif isinstance(hosts, str) and hostname == hosts:
-                    return 'app'
-            
-            # Check if it's a database server
-            database = system_config.get('database', {})
-            hana_hosts = database.get('hana_hosts', [])
-            if isinstance(hana_hosts, list) and hostname in hana_hosts:
-                return 'db'
-            elif isinstance(hana_hosts, str) and hostname == hana_hosts:
-                return 'db'
-        
-        return 'unknown'
-    
-    def _suggest_alternative_hosts(self, current_host: str, allowed_host_types: list) -> list:
-        """
-        Suggest alternative hosts of the correct type from the same SID.
-        
-        Args:
-            current_host: The hostname that was rejected
-            allowed_host_types: List of allowed host types for the command
-            
-        Returns:
-            List of alternative hostnames that could be used
-        """
-        # Find which SID the current host belongs to
-        current_sid = None
-        for sid, system_config in self.shared.sid_resolver.landscape_data.items():
-            # Check app servers
-            app_servers = system_config.get('app_servers', {})
-            for server_type, hosts in app_servers.items():
-                if isinstance(hosts, list) and current_host in hosts:
-                    current_sid = sid
-                    break
-                elif isinstance(hosts, str) and current_host == hosts:
-                    current_sid = sid
-                    break
-            
-            # Check database servers
-            if not current_sid:
-                database = system_config.get('database', {})
-                hana_hosts = database.get('hana_hosts', [])
-                if isinstance(hana_hosts, list) and current_host in hana_hosts:
-                    current_sid = sid
-                    break
-                elif isinstance(hana_hosts, str) and current_host == hana_hosts:
-                    current_sid = sid
-                    break
-        
-        if not current_sid:
-            return []
-        
-        # Get alternative hosts of the correct type from the same SID
-        alternatives = []
-        try:
-            if 'app' in allowed_host_types:
-                app_hosts = self.shared.sid_resolver.get_app_hosts(current_sid)
-                alternatives.extend(app_hosts)
-            
-            if 'db' in allowed_host_types or 'hana' in allowed_host_types:
-                db_hosts = self.shared.sid_resolver.get_hana_hosts(current_sid)
-                alternatives.extend(db_hosts)
-        except ValueError:
-            pass  # SID not found, return empty list
-        
-        # Remove the current host from suggestions and remove duplicates
-        alternatives = [host for host in set(alternatives) if host != current_host]
-        
-        return alternatives[:3]  # Limit to 3 suggestions to keep error message concise

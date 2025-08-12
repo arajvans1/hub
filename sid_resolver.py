@@ -163,3 +163,32 @@ class SIDResolver:
             return hana_hosts
         else:
             return []
+    
+    def find_sid_by_host(self, hostname: str) -> Union[str, None]:
+        """
+        Find which SID a hostname belongs to.
+        
+        Args:
+            hostname: The hostname to search for
+            
+        Returns:
+            SID name if found, None if not found
+        """
+        for sid, system_config in self.landscape_data.items():
+            # Check application servers
+            app_servers = system_config.get('app_servers', {})
+            for server_type, hosts in app_servers.items():
+                if isinstance(hosts, list) and hostname in hosts:
+                    return sid
+                elif isinstance(hosts, str) and hostname == hosts:
+                    return sid
+            
+            # Check database servers
+            database = system_config.get('database', {})
+            hana_hosts = database.get('hana_hosts', [])
+            if isinstance(hana_hosts, list) and hostname in hana_hosts:
+                return sid
+            elif isinstance(hana_hosts, str) and hostname == hana_hosts:
+                return sid
+        
+        return None

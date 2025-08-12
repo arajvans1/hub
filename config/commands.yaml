@@ -61,6 +61,7 @@ commands:
     description: "Get current CPU usage"
     params: {}
     required: ["server"]  # Server hostname required
+    allowed_host_types: "all"  # Can run on any server type
     agent_command: "top -bn1 | grep 'Cpu(s)' | head -1"
     backend: "shell"
     timeout: 30
@@ -69,6 +70,7 @@ commands:
     description: "Get current memory usage"
     params: {}
     required: ["server"]  # Server hostname required
+    allowed_host_types: "all"  # Can run on any server type
     agent_command: "free -h"
     backend: "shell"
     timeout: 30
@@ -80,7 +82,7 @@ commands:
       filter: "SAP*"
       limit: "50"
     required: ["server"]  # Only server required, instance/filter/limit will use defaults
-    allowed_host_types: ["app"]  # Only allow on application servers, not database hosts
+    allowed_host_types: "app"  # Only allow on application servers
     agent_command: "execute soap call"
     backend: "soap"
     timeout: 60
@@ -89,7 +91,7 @@ commands:
     description: "Check if SAP HANA database is up and running"
     params: {}
     required: ["server"]
-    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "systemctl status SAP*HDB* || ps -ef | grep -i hdb | grep -v grep"
     backend: "shell"
     timeout: 30
@@ -99,7 +101,7 @@ commands:
     params:
       instance: "00"
     required: ["server"]
-    allowed_host_types: ["app"]  # Only allow on application servers
+    allowed_host_types: "app"  # Only allow on application servers
     agent_command: "sapcontrol -nr {{.instance}} -function GetProcessList"
     backend: "shell"
     timeout: 30
@@ -109,7 +111,7 @@ commands:
     params:
       instance: "00"
     required: ["server", "instance"]
-    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "sapcontrol -nr {{.instance}} -function GetSystemInstanceList"
     backend: "shell"
     timeout: 45
@@ -119,7 +121,7 @@ commands:
     params:
       instance: "00"
     required: ["server", "instance"] 
-    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "sapcontrol -nr {{.instance}} -function GetProcessList"
     backend: "shell"
     timeout: 30
@@ -128,7 +130,7 @@ commands:
     description: "Check HANA database service status via systemctl"
     params: {}
     required: ["server"]
-    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "systemctl status SAP*HDB* | head -20"
     backend: "shell"
     timeout: 30
@@ -139,6 +141,7 @@ commands:
       path: "/hana"
       threshold: "80"
     required: ["server", "path"]  # server and path required, threshold optional
+    allowed_host_types: "all"  # Can run on any server type
     agent_command: "df -h {{.path}}"
     backend: "shell"
     timeout: 30
