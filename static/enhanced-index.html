@@ -21,17 +21,15 @@
     <style>
         /* CSS Variables for consistent theming */
         :root {
-            --primary-color: #2d333a;
-            --primary-hover: #1a1f24;
+            --primary-color: #10a37f;
+            --primary-hover: #0d8c6f;
             --secondary-color: #f7f7f8;
-            --text-primary: #2d333a;
+            --text-primary: #343541;
             --text-secondary: #565869;
             --text-muted: #8e8ea0;
             --border-color: #e5e5e5;
             --hover-bg: #f9f9f9;
             --white: #ffffff;
-            --user-bg: #f4f4f4;
-            --assistant-bg: #ffffff;
             --shadow-light: 0 1px 3px rgba(0,0,0,0.1);
             --shadow-medium: 0 4px 12px rgba(0,0,0,0.15);
             --shadow-heavy: 0 8px 32px rgba(0,0,0,0.12);
@@ -127,48 +125,6 @@
             opacity: 0;
             transform: translateY(10px);
             animation: messageSlideIn 0.4s ease-out forwards;
-            padding: 0 24px;
-            position: relative;
-        }
-
-        .message:hover .message-actions {
-            opacity: 1;
-        }
-
-        .message-actions {
-            position: absolute;
-            right: 8px;
-            top: 12px;
-            display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-            z-index: 10;
-        }
-
-        .message-action-btn {
-            background: var(--white);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 6px;
-            cursor: pointer;
-            color: var(--text-secondary);
-            transition: all 0.2s ease;
-            box-shadow: var(--shadow-light);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .message-action-btn:hover {
-            background: var(--hover-bg);
-            color: var(--text-primary);
-            transform: translateY(-1px);
-        }
-
-        .message-action-btn svg {
-            width: 14px;
-            height: 14px;
         }
 
         @keyframes messageSlideIn {
@@ -179,29 +135,58 @@
         }
 
         .message.user {
-            background: var(--user-bg);
+            justify-content: flex-end;
         }
 
         .message.assistant {
-            background: var(--assistant-bg);
+            justify-content: flex-start;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+            margin-top: 4px;
+        }
+
+        .message.user .message-avatar {
+            background: var(--primary-color);
+            color: white;
+            margin-left: 12px;
+            order: 2;
+        }
+
+        .message.assistant .message-avatar {
+            background: var(--primary-color);
+            color: white;
+            margin-right: 12px;
         }
 
         .message-content {
-            width: 100%;
-            padding: 20px 0;
+            max-width: 100%;
+            padding: 16px 20px;
+            border-radius: var(--border-radius-large);
             font-size: 15px;
             line-height: 1.7;
             position: relative;
         }
 
         .message.user .message-content {
-            background: transparent;
-            color: var(--text-primary);
+            background: var(--primary-color);
+            color: white;
+            border-bottom-right-radius: 4px;
         }
 
         .message.assistant .message-content {
-            background: transparent;
+            background: var(--secondary-color);
             color: var(--text-primary);
+            border-bottom-left-radius: 4px;
         }
 
         .message-time {
@@ -241,7 +226,7 @@
 
         .input-form:focus-within {
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(45, 51, 58, 0.1);
+            box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
         }
 
         .input-field {
@@ -261,41 +246,6 @@
 
         .input-field::placeholder {
             color: var(--text-muted);
-        }
-
-        /* Quick suggestions */
-        .quick-suggestions {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-            opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.3s ease;
-        }
-
-        .quick-suggestions.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .suggestion-chip {
-            background: var(--secondary-color);
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 6px 12px;
-            font-size: 13px;
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s ease;
-            white-space: nowrap;
-        }
-
-        .suggestion-chip:hover {
-            background: var(--hover-bg);
-            color: var(--text-primary);
-            border-color: var(--primary-color);
-            transform: translateY(-1px);
         }
 
         .send-button {
@@ -332,12 +282,27 @@
             margin-bottom: 32px;
             opacity: 0;
             animation: messageSlideIn 0.4s ease-out forwards;
-            padding: 0 24px;
-            background: var(--assistant-bg);
+        }
+
+        .typing-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            margin-right: 12px;
         }
 
         .typing-content {
-            padding: 20px 0;
+            background: var(--secondary-color);
+            padding: 16px 20px;
+            border-radius: var(--border-radius-large);
+            border-bottom-left-radius: 4px;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -352,7 +317,7 @@
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: var(--text-muted);
+            background: var(--primary-color);
             animation: typingPulse 1.4s infinite ease-in-out;
         }
 
@@ -371,68 +336,14 @@
         }
 
         /* Code blocks */
-        .code-block-container {
-            position: relative;
-            margin: 12px 0;
-        }
-
-        .code-block-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: #f1f3f4;
-            border: 1px solid #e1e4e8;
-            border-bottom: none;
-            border-radius: 8px 8px 0 0;
-            padding: 8px 12px;
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-
-        .code-language {
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .code-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .code-action-btn {
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .code-action-btn:hover {
-            background: var(--border-color);
-            color: var(--text-primary);
-        }
-
         .message-content pre {
             background: #f6f8fa;
             border: 1px solid #e1e4e8;
-            border-radius: 0 0 8px 8px;
+            border-radius: 8px;
             padding: 16px;
-            margin: 0;
+            margin: 12px 0;
             overflow-x: auto;
             font-size: 14px;
-            position: relative;
-        }
-
-        .message-content pre.no-header {
-            border-radius: 8px;
-            margin: 12px 0;
         }
 
         .message-content code:not(pre code) {
@@ -465,12 +376,12 @@
 
         /* Links */
         .message-content a {
-            color: var(--text-primary);
-            text-decoration: underline;
+            color: var(--primary-color);
+            text-decoration: none;
         }
 
         .message-content a:hover {
-            color: var(--primary-color);
+            text-decoration: underline;
         }
 
         /* Lists */
@@ -518,8 +429,8 @@
 
         /* Welcome message styling */
         .welcome-content {
-            background: transparent;
-            border: none;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 1px solid #bae6fd;
         }
 
         .welcome-features {
@@ -540,7 +451,7 @@
             width: 16px;
             height: 16px;
             border-radius: 50%;
-            background: var(--text-muted);
+            background: var(--primary-color);
             color: white;
             display: flex;
             align-items: center;
@@ -551,7 +462,7 @@
 
         .system-tag {
             display: inline-block;
-            background: var(--text-muted);
+            background: var(--primary-color);
             color: white;
             padding: 2px 8px;
             border-radius: 12px;
@@ -584,124 +495,6 @@
         .messages-container::-webkit-scrollbar-thumb:hover {
             background: #d1d1d1;
         }
-
-        /* Toast notifications */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--text-primary);
-            color: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 1000;
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s ease;
-        }
-
-        .toast.show {
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        .toast.success {
-            background: #10b981;
-        }
-
-        .toast.error {
-            background: #ef4444;
-        }
-
-        /* Streaming text effect */
-        .streaming-text {
-            overflow: hidden;
-            border-right: 2px solid var(--text-muted);
-            animation: typing 0.05s steps(1) infinite, blink 1s infinite;
-        }
-
-        @keyframes typing {
-            from { border-right-color: var(--text-muted); }
-            to { border-right-color: transparent; }
-        }
-
-        @keyframes blink {
-            0%, 50% { border-right-color: var(--text-muted); }
-            51%, 100% { border-right-color: transparent; }
-        }
-
-        /* Keyboard shortcuts overlay */
-        .shortcuts-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .shortcuts-overlay.show {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .shortcuts-modal {
-            background: var(--white);
-            border-radius: var(--border-radius-large);
-            padding: 24px;
-            max-width: 400px;
-            width: 90%;
-            box-shadow: var(--shadow-heavy);
-            transform: scale(0.9);
-            transition: transform 0.3s ease;
-        }
-
-        .shortcuts-overlay.show .shortcuts-modal {
-            transform: scale(1);
-        }
-
-        .shortcuts-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            color: var(--text-primary);
-        }
-
-        .shortcut-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .shortcut-item:last-child {
-            border-bottom: none;
-        }
-
-        .shortcut-desc {
-            color: var(--text-secondary);
-            font-size: 14px;
-        }
-
-        .shortcut-key {
-            background: var(--secondary-color);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 4px 8px;
-            font-family: monospace;
-            font-size: 12px;
-            color: var(--text-primary);
-        }
     </style>
 </head>
 <body>
@@ -718,6 +511,7 @@
         <div class="messages-container" id="messagesContainer">
             <div class="messages-wrapper">
                 <div class="message assistant">
+                    <div class="message-avatar">AI</div>
                     <div class="message-content welcome-content">
                         <div><strong>Welcome to SAP S/4HANA Monitoring!</strong></div>
                         <div class="welcome-features">
@@ -750,12 +544,6 @@
         <!-- Input area -->
         <div class="input-container">
             <div class="input-wrapper">
-                <div class="quick-suggestions" id="quickSuggestions">
-                    <div class="suggestion-chip" data-suggestion="What systems are available?">📊 Available Systems</div>
-                    <div class="suggestion-chip" data-suggestion="Check CPU usage on PRD">🔍 CPU Usage</div>
-                    <div class="suggestion-chip" data-suggestion="Show memory statistics">💾 Memory Stats</div>
-                    <div class="suggestion-chip" data-suggestion="List active processes">⚡ Active Processes</div>
-                </div>
                 <div class="input-form">
                     <textarea 
                         id="messageInput" 
@@ -776,36 +564,6 @@
         </div>
     </div>
 
-    <!-- Keyboard shortcuts overlay -->
-    <div class="shortcuts-overlay" id="shortcutsOverlay">
-        <div class="shortcuts-modal">
-            <div class="shortcuts-title">Keyboard Shortcuts</div>
-            <div class="shortcut-item">
-                <span class="shortcut-desc">Send message</span>
-                <span class="shortcut-key">Enter</span>
-            </div>
-            <div class="shortcut-item">
-                <span class="shortcut-desc">New line</span>
-                <span class="shortcut-key">Shift + Enter</span>
-            </div>
-            <div class="shortcut-item">
-                <span class="shortcut-desc">Clear chat</span>
-                <span class="shortcut-key">Ctrl/Cmd + K</span>
-            </div>
-            <div class="shortcut-item">
-                <span class="shortcut-desc">Focus input</span>
-                <span class="shortcut-key">/</span>
-            </div>
-            <div class="shortcut-item">
-                <span class="shortcut-desc">Show shortcuts</span>
-                <span class="shortcut-key">?</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Toast container -->
-    <div id="toastContainer"></div>
-
     <script>
         class ChatInterface {
             constructor() {
@@ -813,11 +571,7 @@
                 this.messagesWrapper = this.messagesContainer.querySelector('.messages-wrapper');
                 this.messageInput = document.getElementById('messageInput');
                 this.sendButton = document.getElementById('sendButton');
-                this.quickSuggestions = document.getElementById('quickSuggestions');
-                this.shortcutsOverlay = document.getElementById('shortcutsOverlay');
                 this.chatHistory = [];
-                this.messageHistory = [];
-                this.historyIndex = -1;
                 this.init();
             }
 
@@ -825,34 +579,13 @@
                 // Initialize autosize for textarea
                 autosize(this.messageInput);
                 
-                // Show quick suggestions initially
-                setTimeout(() => {
-                    this.quickSuggestions.classList.add('show');
-                }, 500);
-
                 // Event listeners
                 this.sendButton.addEventListener('click', () => this.sendMessage());
                 
-                this.messageInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
-                this.messageInput.addEventListener('input', () => this.handleInput());
-
-                // Quick suggestions
-                this.quickSuggestions.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('suggestion-chip')) {
-                        this.messageInput.value = e.target.dataset.suggestion;
-                        this.hideQuickSuggestions();
-                        this.messageInput.focus();
-                        autosize.update(this.messageInput);
-                    }
-                });
-
-                // Global keyboard shortcuts
-                document.addEventListener('keydown', (e) => this.handleGlobalKeyDown(e));
-
-                // Click outside to hide shortcuts
-                this.shortcutsOverlay.addEventListener('click', (e) => {
-                    if (e.target === this.shortcutsOverlay) {
-                        this.hideShortcuts();
+                this.messageInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendMessage();
                     }
                 });
 
@@ -866,105 +599,9 @@
                 });
             }
 
-            handleKeyDown(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    this.sendMessage();
-                } else if (e.key === 'ArrowUp' && e.ctrlKey) {
-                    e.preventDefault();
-                    this.navigateHistory(-1);
-                } else if (e.key === 'ArrowDown' && e.ctrlKey) {
-                    e.preventDefault();
-                    this.navigateHistory(1);
-                }
-            }
-
-            handleInput() {
-                if (this.messageInput.value.trim()) {
-                    this.hideQuickSuggestions();
-                } else {
-                    this.showQuickSuggestions();
-                }
-            }
-
-            handleGlobalKeyDown(e) {
-                // Don't trigger shortcuts when typing in input
-                if (e.target === this.messageInput) return;
-
-                if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
-                    e.preventDefault();
-                    this.showShortcuts();
-                } else if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
-                    e.preventDefault();
-                    this.messageInput.focus();
-                } else if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-                    e.preventDefault();
-                    this.clearChat();
-                } else if (e.key === 'Escape') {
-                    this.hideShortcuts();
-                }
-            }
-
-            navigateHistory(direction) {
-                if (this.messageHistory.length === 0) return;
-
-                this.historyIndex += direction;
-                this.historyIndex = Math.max(-1, Math.min(this.messageHistory.length - 1, this.historyIndex));
-
-                if (this.historyIndex === -1) {
-                    this.messageInput.value = '';
-                } else {
-                    this.messageInput.value = this.messageHistory[this.historyIndex];
-                }
-                autosize.update(this.messageInput);
-            }
-
-            showQuickSuggestions() {
-                this.quickSuggestions.classList.add('show');
-            }
-
-            hideQuickSuggestions() {
-                this.quickSuggestions.classList.remove('show');
-            }
-
-            showShortcuts() {
-                this.shortcutsOverlay.classList.add('show');
-            }
-
-            hideShortcuts() {
-                this.shortcutsOverlay.classList.remove('show');
-            }
-
-            clearChat() {
-                const messages = this.messagesWrapper.querySelectorAll('.message:not(.message.assistant):not(:first-child)');
-                messages.forEach(message => message.remove());
-                this.chatHistory = [];
-                this.showToast('Chat cleared', 'success');
-                this.showQuickSuggestions();
-            }
-
-            showToast(message, type = 'info') {
-                const toast = document.createElement('div');
-                toast.className = `toast ${type}`;
-                toast.textContent = message;
-                
-                document.getElementById('toastContainer').appendChild(toast);
-                
-                setTimeout(() => toast.classList.add('show'), 100);
-                setTimeout(() => {
-                    toast.classList.remove('show');
-                    setTimeout(() => toast.remove(), 300);
-                }, 3000);
-            }
-
             async sendMessage() {
                 const message = this.messageInput.value.trim();
                 if (!message || this.sendButton.disabled) return;
-
-                // Add to history
-                this.messageHistory.unshift(message);
-                this.messageHistory = this.messageHistory.slice(0, 50); // Keep last 50
-                this.historyIndex = -1;
 
                 // Add user message
                 this.addMessage('user', message);
@@ -972,7 +609,6 @@
                 // Clear input and reset height
                 this.messageInput.value = '';
                 autosize.update(this.messageInput);
-                this.hideQuickSuggestions();
                 
                 // Set loading state
                 this.setLoading(true);
@@ -1009,18 +645,11 @@
                 }
             }
 
-            copyToClipboard(text) {
-                navigator.clipboard.writeText(text).then(() => {
-                    this.showToast('Copied to clipboard', 'success');
-                }).catch(() => {
-                    this.showToast('Failed to copy', 'error');
-                });
-            }
-
             addMessage(role, content, isMarkdown = false, isError = false) {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${role}`;
 
+                const avatarText = role === 'user' ? 'U' : 'AI';
                 const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                 let formattedContent = content;
@@ -1039,81 +668,22 @@
                 const contentClass = isError ? 'message-content error-content' : 'message-content';
 
                 messageDiv.innerHTML = `
+                    <div class="message-avatar">${avatarText}</div>
                     <div class="${contentClass}">
                         <div>${formattedContent}</div>
                         <div class="message-time">${time}</div>
                     </div>
-                    ${role === 'assistant' ? `
-                    <div class="message-actions">
-                        <button class="message-action-btn" onclick="chatInterface.copyToClipboard(\`${content.replace(/`/g, '\\`')}\`)" title="Copy message">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                        </button>
-                    </div>` : ''}
                 `;
 
                 this.messagesWrapper.appendChild(messageDiv);
                 this.scrollToBottom();
 
-                // Enhance code blocks
+                // Highlight code blocks if markdown was processed
                 if (isMarkdown) {
-                    this.enhanceCodeBlocks(messageDiv);
                     messageDiv.querySelectorAll('pre code').forEach((block) => {
                         hljs.highlightElement(block);
                     });
                 }
-            }
-
-            enhanceCodeBlocks(messageElement) {
-                messageElement.querySelectorAll('pre').forEach((pre) => {
-                    const code = pre.querySelector('code');
-                    if (!code) return;
-
-                    // Detect language
-                    const language = this.detectLanguage(code);
-                    
-                    // Create enhanced container
-                    const container = document.createElement('div');
-                    container.className = 'code-block-container';
-                    
-                    const header = document.createElement('div');
-                    header.className = 'code-block-header';
-                    header.innerHTML = `
-                        <span class="code-language">${language}</span>
-                        <div class="code-actions">
-                            <button class="code-action-btn" onclick="chatInterface.copyToClipboard(\`${code.textContent.replace(/`/g, '\\`')}\`)">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
-                                Copy
-                            </button>
-                        </div>
-                    `;
-
-                    pre.classList.remove('no-header');
-                    
-                    // Wrap in container
-                    pre.parentNode.insertBefore(container, pre);
-                    container.appendChild(header);
-                    container.appendChild(pre);
-                });
-            }
-
-            detectLanguage(codeElement) {
-                const className = codeElement.className;
-                const match = className.match(/language-(\w+)/);
-                if (match) return match[1];
-
-                const text = codeElement.textContent;
-                if (text.includes('def ') || text.includes('import ')) return 'python';
-                if (text.includes('function') || text.includes('const ')) return 'javascript';
-                if (text.includes('SELECT') || text.includes('FROM')) return 'sql';
-                if (text.includes('#!/bin/bash') || text.includes('echo ')) return 'bash';
-                
-                return 'text';
             }
 
             showTypingIndicator() {
@@ -1122,6 +692,7 @@
                 typingDiv.className = 'typing-indicator';
                 
                 typingDiv.innerHTML = `
+                    <div class="typing-avatar">AI</div>
                     <div class="typing-content">
                         <div class="typing-dots">
                             <div class="typing-dot"></div>
@@ -1161,12 +732,9 @@
             }
         }
 
-        // Global instance
-        let chatInterface;
-
         // Initialize the chat interface when DOM is loaded
         document.addEventListener('DOMContentLoaded', () => {
-            chatInterface = new ChatInterface();
+            new ChatInterface();
         });
     </script>
 </body>
