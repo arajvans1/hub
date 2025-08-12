@@ -80,9 +80,58 @@ commands:
       filter: "SAP*"
       limit: "50"
     required: ["server"]  # Only server required, instance/filter/limit will use defaults
+    allowed_host_types: ["app"]  # Only allow on application servers, not database hosts
     agent_command: "execute soap call"
     backend: "soap"
     timeout: 60
+
+  check_database_status:
+    description: "Check if SAP HANA database is up and running"
+    params: {}
+    required: ["server"]
+    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    agent_command: "systemctl status SAP*HDB* || ps -ef | grep -i hdb | grep -v grep"
+    backend: "shell"
+    timeout: 30
+
+  check_sap_services:
+    description: "Check if SAP application services are running"
+    params:
+      instance: "00"
+    required: ["server"]
+    allowed_host_types: ["app"]  # Only allow on application servers
+    agent_command: "sapcontrol -nr {{.instance}} -function GetProcessList"
+    backend: "shell"
+    timeout: 30
+
+  hana_system_overview:
+    description: "Get HANA database system overview and status"
+    params:
+      instance: "00"
+    required: ["server", "instance"]
+    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    agent_command: "sapcontrol -nr {{.instance}} -function GetSystemInstanceList"
+    backend: "shell"
+    timeout: 45
+
+  hana_process_status:
+    description: "Check HANA database process status"
+    params:
+      instance: "00"
+    required: ["server", "instance"] 
+    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    agent_command: "sapcontrol -nr {{.instance}} -function GetProcessList"
+    backend: "shell"
+    timeout: 30
+
+  hana_service_status:
+    description: "Check HANA database service status via systemctl"
+    params: {}
+    required: ["server"]
+    allowed_host_types: ["db", "hana"]  # Only allow on database hosts
+    agent_command: "systemctl status SAP*HDB* | head -20"
+    backend: "shell"
+    timeout: 30
 
   disk_usage:
     description: "Get disk usage stats for a path"
