@@ -269,14 +269,14 @@
             gap: 8px;
             margin-bottom: 12px;
             flex-wrap: wrap;
-            opacity: 0;
-            transform: translateY(10px);
+            opacity: 1;
+            transform: translateY(0);
             transition: all 0.3s ease;
         }
 
-        .quick-suggestions.show {
-            opacity: 1;
-            transform: translateY(0);
+        .quick-suggestions.hide {
+            opacity: 0;
+            transform: translateY(-10px);
         }
 
         .suggestion-chip {
@@ -614,6 +614,10 @@
             background: #ef4444;
         }
 
+        .toast.info {
+            background: #3b82f6;
+        }
+
         /* Streaming text effect */
         .streaming-text {
             overflow: hidden;
@@ -702,6 +706,17 @@
             font-size: 12px;
             color: var(--text-primary);
         }
+
+        /* Inline keyboard shortcuts */
+        kbd {
+            background: var(--secondary-color);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            padding: 1px 4px;
+            font-family: monospace;
+            font-size: 11px;
+            color: var(--text-primary);
+        }
     </style>
 </head>
 <body>
@@ -741,6 +756,9 @@
                         <div style="margin-top: 16px; font-size: 14px; color: var(--text-secondary);">
                             <em>Try asking: "What systems are available?" or "Check CPU usage on PRD"</em>
                         </div>
+                        <div style="margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+                            💡 <strong>Quick tips:</strong> Use suggestions below • Press <kbd>?</kbd> for shortcuts • <kbd>↑/↓</kbd> for message history
+                        </div>
                         <div class="message-time">Just now</div>
                     </div>
                 </div>
@@ -751,10 +769,12 @@
         <div class="input-container">
             <div class="input-wrapper">
                 <div class="quick-suggestions" id="quickSuggestions">
-                    <div class="suggestion-chip" data-suggestion="What systems are available?">📊 Available Systems</div>
-                    <div class="suggestion-chip" data-suggestion="Check CPU usage on PRD">🔍 CPU Usage</div>
-                    <div class="suggestion-chip" data-suggestion="Show memory statistics">💾 Memory Stats</div>
-                    <div class="suggestion-chip" data-suggestion="List active processes">⚡ Active Processes</div>
+                    <div class="suggestion-chip" data-suggestion="What systems are available?">🏢 Show Systems</div>
+                    <div class="suggestion-chip" data-suggestion="Check CPU usage on PRD">� PRD CPU</div>
+                    <div class="suggestion-chip" data-suggestion="Show memory usage on DEV">💾 DEV Memory</div>
+                    <div class="suggestion-chip" data-suggestion="List active processes">⚡ Processes</div>
+                    <div class="suggestion-chip" data-suggestion="Check disk space">💽 Disk Space</div>
+                    <div class="suggestion-chip" data-suggestion="Show database status">🗄️ Database</div>
                 </div>
                 <div class="input-form">
                     <textarea 
@@ -793,8 +813,20 @@
                 <span class="shortcut-key">Ctrl/Cmd + K</span>
             </div>
             <div class="shortcut-item">
+                <span class="shortcut-desc">Clear input</span>
+                <span class="shortcut-key">Ctrl/Cmd + C</span>
+            </div>
+            <div class="shortcut-item">
                 <span class="shortcut-desc">Focus input</span>
                 <span class="shortcut-key">/</span>
+            </div>
+            <div class="shortcut-item">
+                <span class="shortcut-desc">Previous message</span>
+                <span class="shortcut-key">↑</span>
+            </div>
+            <div class="shortcut-item">
+                <span class="shortcut-desc">Next message</span>
+                <span class="shortcut-key">↓</span>
             </div>
             <div class="shortcut-item">
                 <span class="shortcut-desc">Show shortcuts</span>
@@ -816,25 +848,46 @@
                 this.quickSuggestions = document.getElementById('quickSuggestions');
                 this.shortcutsOverlay = document.getElementById('shortcutsOverlay');
                 this.chatHistory = [];
-                this.messageHistory = [];
+                this.messageHistory = this.loadMessageHistory();
                 this.historyIndex = -1;
                 this.init();
+            }
+
+            loadMessageHistory() {
+                try {
+                    const saved = localStorage.getItem('sap_chat_history');
+                    const history = saved ? JSON.parse(saved) : [];
+                    console.log('Loaded message history:', history);
+                    return history;
+                } catch (e) {
+                    console.warn('Error loading message history:', e);
+                    return [];
+                }
+            }
+
+            saveMessageHistory() {
+                try {
+                    localStorage.setItem('sap_chat_history', JSON.stringify(this.messageHistory));
+                    console.log('Saved message history:', this.messageHistory);
+                } catch (e) {
+                    console.warn('Could not save message history:', e);
+                }
             }
 
             init() {
                 // Initialize autosize for textarea
                 autosize(this.messageInput);
                 
-                // Show quick suggestions initially
-                setTimeout(() => {
-                    this.quickSuggestions.classList.add('show');
-                }, 500);
+                // Quick suggestions are visible by default now
+                // No need to show them with setTimeout
 
                 // Event listeners
                 this.sendButton.addEventListener('click', () => this.sendMessage());
                 
                 this.messageInput.addEventListener('keydown', (e) => this.handleKeyDown(e));
                 this.messageInput.addEventListener('input', () => this.handleInput());
+                this.messageInput.addEventListener('focus', () => this.onInputFocus());
+                this.messageInput.addEventListener('blur', () => this.onInputBlur());
 
                 // Quick suggestions
                 this.quickSuggestions.addEventListener('click', (e) => {
@@ -866,16 +919,40 @@
                 });
             }
 
+            onInputFocus() {
+                // Show history hint if there's history available
+                if (this.messageHistory.length > 0 && this.messageInput.value.trim() === '') {
+                    this.messageInput.placeholder = `Ask me about your SAP systems... (${this.messageHistory.length} messages in history - use ↑/↓)`;
+                }
+            }
+
+            onInputBlur() {
+                // Reset placeholder
+                if (this.messageInput.placeholder !== "Ask me about your SAP systems...") {
+                    this.messageInput.placeholder = "Ask me about your SAP systems...";
+                }
+            }
+
             handleKeyDown(e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     this.sendMessage();
-                } else if (e.key === 'ArrowUp' && e.ctrlKey) {
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'c' && this.messageInput.value.trim() !== '') {
+                    // Ctrl+C to clear input (like terminal) - only if there's text
                     e.preventDefault();
-                    this.navigateHistory(-1);
-                } else if (e.key === 'ArrowDown' && e.ctrlKey) {
-                    e.preventDefault();
-                    this.navigateHistory(1);
+                    this.clearInput();
+                } else if (e.key === 'ArrowUp') {
+                    // Only navigate history if input is empty or cursor is at start
+                    if (this.messageInput.value === '' || this.messageInput.selectionStart === 0) {
+                        e.preventDefault();
+                        this.navigateHistory(1); // Up arrow = more recent (reversed)
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    // Only navigate history if input is empty or cursor is at end
+                    if (this.messageInput.value === '' || this.messageInput.selectionStart === this.messageInput.value.length) {
+                        e.preventDefault();
+                        this.navigateHistory(-1); // Down arrow = older (reversed)
+                    }
                 }
             }
 
@@ -884,6 +961,11 @@
                     this.hideQuickSuggestions();
                 } else {
                     this.showQuickSuggestions();
+                }
+                
+                // Reset placeholder when user starts typing
+                if (this.messageInput.value.trim() && this.messageInput.placeholder !== "Ask me about your SAP systems...") {
+                    this.messageInput.placeholder = "Ask me about your SAP systems...";
                 }
             }
 
@@ -906,25 +988,29 @@
             }
 
             navigateHistory(direction) {
-                if (this.messageHistory.length === 0) return;
+                if (this.messageHistory.length === 0) {
+                    return; // Silently return if no history
+                }
 
                 this.historyIndex += direction;
                 this.historyIndex = Math.max(-1, Math.min(this.messageHistory.length - 1, this.historyIndex));
 
                 if (this.historyIndex === -1) {
                     this.messageInput.value = '';
+                    this.messageInput.placeholder = "Ask me about your SAP systems...";
                 } else {
                     this.messageInput.value = this.messageHistory[this.historyIndex];
+                    this.messageInput.placeholder = `History ${this.historyIndex + 1}/${this.messageHistory.length}`;
                 }
                 autosize.update(this.messageInput);
             }
 
             showQuickSuggestions() {
-                this.quickSuggestions.classList.add('show');
+                this.quickSuggestions.classList.remove('hide');
             }
 
             hideQuickSuggestions() {
-                this.quickSuggestions.classList.remove('show');
+                this.quickSuggestions.classList.add('hide');
             }
 
             showShortcuts() {
@@ -936,10 +1022,25 @@
             }
 
             clearChat() {
-                const messages = this.messagesWrapper.querySelectorAll('.message:not(.message.assistant):not(:first-child)');
-                messages.forEach(message => message.remove());
+                // Remove all messages except the welcome message (first assistant message)
+                const messages = this.messagesWrapper.querySelectorAll('.message');
+                messages.forEach((message, index) => {
+                    // Keep the first message (welcome message)
+                    if (index > 0) {
+                        message.remove();
+                    }
+                });
                 this.chatHistory = [];
-                this.showToast('Chat cleared', 'success');
+                this.showQuickSuggestions();
+                // No toast notification - just silently clear
+            }
+
+            clearInput() {
+                // Clear the input field like Ctrl+C in terminal
+                this.messageInput.value = '';
+                this.messageInput.placeholder = "Ask me about your SAP systems...";
+                this.historyIndex = -1; // Reset history position
+                autosize.update(this.messageInput);
                 this.showQuickSuggestions();
             }
 
@@ -951,10 +1052,12 @@
                 document.getElementById('toastContainer').appendChild(toast);
                 
                 setTimeout(() => toast.classList.add('show'), 100);
+                
+                const duration = type === 'info' ? 1500 : 3000; // Shorter for info messages
                 setTimeout(() => {
                     toast.classList.remove('show');
                     setTimeout(() => toast.remove(), 300);
-                }, 3000);
+                }, duration);
             }
 
             async sendMessage() {
@@ -964,6 +1067,7 @@
                 // Add to history
                 this.messageHistory.unshift(message);
                 this.messageHistory = this.messageHistory.slice(0, 50); // Keep last 50
+                this.saveMessageHistory(); // Save to localStorage
                 this.historyIndex = -1;
 
                 // Add user message
