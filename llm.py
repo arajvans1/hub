@@ -6,6 +6,7 @@ from langchain_openai import AzureChatOpenAI
 from command_loader import CommandLoader
 from command_builder import CommandBuilder
 from agent import Agent
+from ansible_executor import AnsibleExecutor
 from function_schema_builder import FunctionSchemaBuilder
 from sid_resolver import SIDResolver
 from vault import VaultManager, VaultError
@@ -19,6 +20,7 @@ class SharedResources:
         self.commands_loader = None
         self.command_builder = None
         self.agent = None
+        self.ansible_executor = None
         self.function_schema_builder = None
         self.sid_resolver = None
         self.vault_manager = None
@@ -46,15 +48,25 @@ class SharedResources:
         # Create shared objects once
         self.commands_loader = CommandLoader(commands_file)
         commands = self.commands_loader.get_commands()
-        
+
         # Initialize SID resolver for landscape management
         self.sid_resolver = SIDResolver(landscape_file)
-        
+
         # Hard-coded monitoring domain (not part of function schemas)
         monitoring_domain = "mybank.net"
-        
+
         self.command_builder = CommandBuilder(commands)
         self.agent = Agent(monitoring_domain)
+
+        # Initialize Ansible executor for hybrid execution model
+        try:
+            self.ansible_executor = AnsibleExecutor(inventory_file="config/ansible_inventory.ini")
+            print("Ansible executor initialized")
+        except Exception as e:
+            print(f"Warning: Ansible executor initialization failed: {e}")
+            print("Ansible-based commands will not be available. Go agent will be used as fallback.")
+            self.ansible_executor = None
+
         self.function_schema_builder = FunctionSchemaBuilder(commands)
         self.tools = self.function_schema_builder.build_function_schemas()
         
@@ -67,7 +79,7 @@ class SharedResources:
     def get_azure_openai_credentials(self) -> Dict[str, str]:
         """
         Get Azure OpenAI credentials from vault or return empty dict for manual configuration.
-        
+
         Returns:
             Dictionary with api_key and azure_endpoint, or empty dict if vault unavailable
         """
@@ -76,8 +88,9 @@ class SharedResources:
                 return self.vault_manager.get_azure_openai_config()
             except VaultError as e:
                 print(f"Warning: Could not retrieve Azure OpenAI credentials from vault: {e}")
-        
-        # Return empty dict if vault unavailable - caller should handle manual input
+
+        # Return empty dict if vault unavailable - allows testing without Azure OpenAI
+        print("Note: Running without Azure OpenAI credentials (test mode)")
         return {}
     
     def _load_system_prompt(self, system_prompt_file: str) -> str:

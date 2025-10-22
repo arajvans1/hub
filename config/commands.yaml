@@ -10,17 +10,37 @@
 #
 # 2. File-based command (for complex queries):
 #    agent_command: "file:path/to/file"
-#    
+#
 #    Examples:
 #    - Relative path: agent_command: "file:config/queries/my_query.sql"
 #    - Absolute path: agent_command: "file:/usr/local/sap/queries/system_check.sql"
-#    
+#
 #    Notes:
 #    - Relative paths are resolved from the command_loader.py directory
 #    - Absolute paths are used as-is
 #    - Use this for large SQL queries, complex scripts, etc.
 #    - Parameter substitution ({{.param}}) works in both formats
 #    - Files are loaded once at startup and cached
+
+# HYBRID EXECUTION MODEL:
+# ======================
+# Backend field supports two execution modes:
+#
+# 1. Ansible execution (no agent deployment required):
+#    backend: "ansible.shell"   - Execute shell commands via SSH
+#    backend: "ansible.database" - Execute database queries via SSH
+#
+# 2. Go agent execution (requires agent deployment):
+#    backend: "agent.shell"   - Execute via Go agent HTTP endpoint
+#    backend: "agent.soap"    - Execute SOAP calls via Go agent
+#    backend: "agent.rest"    - Execute REST calls via Go agent
+#
+# 3. Backward compatibility (defaults to Go agent):
+#    backend: "shell"  - Same as "agent.shell"
+#    backend: "soap"   - Same as "agent.soap"
+#
+# Choose Ansible for: Simple shell/SQL commands where 100-300ms latency is acceptable
+# Choose Go agent for: SOAP/REST calls, streaming data, or sub-10ms response required
 
 commands:
   # SID Discovery and Resolution Functions - Called by LLM to work with SAP System IDs
@@ -63,7 +83,7 @@ commands:
     required: ["server"]  # Server hostname required
     allowed_host_types: "all"  # Can run on any server type
     agent_command: "top -bn1 | grep 'Cpu(s)' | head -1"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - simple shell command, no agent needed
     timeout: 30
 
   memory_info:
@@ -72,7 +92,7 @@ commands:
     required: ["server"]  # Server hostname required
     allowed_host_types: "all"  # Can run on any server type
     agent_command: "free -h"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - simple shell command, no agent needed
     timeout: 30
 
   get_process_list:
@@ -84,7 +104,7 @@ commands:
     required: ["server"]  # Only server required, instance/filter/limit will use defaults
     allowed_host_types: "app"  # Only allow on application servers
     agent_command: "execute soap call"
-    backend: "soap"
+    backend: "agent.soap"  # Use Go agent - SOAP requires complex protocol handling
     timeout: 60
 
   check_database_status:
@@ -93,7 +113,7 @@ commands:
     required: ["server"]
     allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "systemctl status SAP*HDB* || ps -ef | grep -i hdb | grep -v grep"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - simple shell command, no agent needed
     timeout: 30
 
   check_sap_services:
@@ -103,7 +123,7 @@ commands:
     required: ["server"]
     allowed_host_types: "app"  # Only allow on application servers
     agent_command: "sapcontrol -nr {{.instance}} -function GetProcessList"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - sapcontrol is a shell command
     timeout: 30
 
   hana_system_overview:
@@ -113,17 +133,17 @@ commands:
     required: ["server", "instance"]
     allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "sapcontrol -nr {{.instance}} -function GetSystemInstanceList"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - sapcontrol is a shell command
     timeout: 45
 
   hana_process_status:
     description: "Check HANA database process status"
     params:
       instance: "00"
-    required: ["server", "instance"] 
+    required: ["server", "instance"]
     allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "sapcontrol -nr {{.instance}} -function GetProcessList"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - sapcontrol is a shell command
     timeout: 30
 
   hana_service_status:
@@ -132,7 +152,7 @@ commands:
     required: ["server"]
     allowed_host_types: "db"  # Only allow on database hosts
     agent_command: "systemctl status SAP*HDB* | head -20"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - simple shell command
     timeout: 30
 
   disk_usage:
@@ -143,7 +163,7 @@ commands:
     required: ["server", "path"]  # server and path required, threshold optional
     allowed_host_types: "all"  # Can run on any server type
     agent_command: "df -h {{.path}}"
-    backend: "shell"
+    backend: "ansible.shell"  # Use Ansible - simple shell command
     timeout: 30
 
   # Example of complex database query loaded from file
@@ -156,7 +176,7 @@ commands:
       limit: "50"
     required: ["server", "cpu_threshold", "memory_threshold"]
     agent_command: "file:config/queries/sap_performance_analysis.sql"
-    backend: "database"
+    backend: "ansible.database"  # Use Ansible - database queries via SSH
     timeout: 120
 
   # Example of complex query loaded from file
@@ -168,7 +188,7 @@ commands:
       min_sessions: "3"
     required: ["server", "client"]
     agent_command: "file:config/queries/user_session_analysis.sql"
-    backend: "database"
+    backend: "ansible.database"  # Use Ansible - database queries via SSH
     timeout: 60
 
   # Example of how easy it is to add new commands:

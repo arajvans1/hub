@@ -1,4 +1,24 @@
 {
+  "LOCAL": {
+    "application_sid": "LOCAL",
+    "description": "Local Test System",
+    "app_servers": {
+      "ascs": [],
+      "pas": ["localhost"],
+      "aas": []
+    },
+    "database": {
+      "hana_sid": "LOC",
+      "tenant_db": "LOCAL",
+      "hana_hosts": []
+    },
+    "ports": {
+      "http": 8000,
+      "https": 44300,
+      "rfc": 3300
+    },
+    "client": "100"
+  },
   "PRD": {
     "application_sid": "PRD",
     "description": "Production System",

@@ -1,5 +1,5 @@
 # Core dependencies for SAP Monitoring LLM Chatbot
-# Updated for simplified vault integration and clean architecture
+# Updated for hybrid Ansible + Go agent execution model
 
 # HTTP requests for agent communication
 requests>=2.28.0,<3.0.0
@@ -15,6 +15,10 @@ fastapi
 
 # ASGI server for running the FastAPI app
 uvicorn
+
+# Ansible integration for hybrid execution model
+ansible-core>=2.15.0,<2.18.0
+ansible-runner>=2.3.0,<3.0.0
 
 # Optional dependencies for enhanced functionality
 # langchain>=0.1.0  # If you need additional LangChain features
