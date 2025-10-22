@@ -230,12 +230,12 @@ class AnsibleExecutor:
                         "ansible_status": result.status
                     }
 
-        # Fallback if no task output found
+        # Fallback if no task output found - this is actually an error!
         return {
-            "success": True,
+            "error": "Could not extract command output from Ansible events",
             "server": server,
-            "message": "Command executed successfully",
-            "ansible_status": result.status
+            "ansible_status": result.status,
+            "details": "Ansible reported success but no task output was found in events"
         }
 
     def _extract_error_details(self, result: ansible_runner.Runner) -> str:
