@@ -60,7 +60,7 @@ class SharedResources:
 
         # Initialize Ansible executor for hybrid execution model
         try:
-            self.ansible_executor = AnsibleExecutor(inventory_file="config/ansible_inventory.ini")
+            self.ansible_executor = AnsibleExecutor(landscape_file=landscape_file)
             print("Ansible executor initialized")
         except Exception as e:
             print(f"Warning: Ansible executor initialization failed: {e}")

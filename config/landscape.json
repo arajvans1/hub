@@ -17,7 +17,11 @@
       "https": 44300,
       "rfc": 3300
     },
-    "client": "100"
+    "client": "100",
+    "ssh_config": {
+      "app_server_user": "arajvans",
+      "database_user": "arajvans"
+    }
   },
   "PRD": {
     "application_sid": "PRD",
@@ -37,7 +41,11 @@
       "https": 44300,
       "rfc": 3300
     },
-    "client": "100"
+    "client": "100",
+    "ssh_config": {
+      "app_server_user": "prdadm",
+      "database_user": "h01adm"
+    }
   },
   "QAS": {
     "application_sid": "QAS",
@@ -57,7 +65,11 @@
       "https": 44300,
       "rfc": 3300
     },
-    "client": "100"
+    "client": "100",
+    "ssh_config": {
+      "app_server_user": "qasadm",
+      "database_user": "h02adm"
+    }
   },
   "DEV": {
     "application_sid": "DEV",
@@ -77,7 +89,11 @@
       "https": 44300,
       "rfc": 3300
     },
-    "client": "100"
+    "client": "100",
+    "ssh_config": {
+      "app_server_user": "devadm",
+      "database_user": "h03adm"
+    }
   },
   "SBX": {
     "application_sid": "SBX",
@@ -97,6 +113,10 @@
       "https": 44300,
       "rfc": 3300
     },
-    "client": "100"
+    "client": "100",
+    "ssh_config": {
+      "app_server_user": "sbxadm",
+      "database_user": "h04adm"
+    }
   }
 }

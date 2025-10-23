@@ -12,20 +12,86 @@ import ansible_runner
 class AnsibleExecutor:
     """Executes monitoring commands via Ansible using ansible-runner."""
 
-    def __init__(self, inventory_file: str = "config/ansible_inventory.ini"):
+    def __init__(self, landscape_file: str = "config/landscape.json"):
         """
-        Initialize Ansible executor.
+        Initialize Ansible executor with landscape configuration.
 
         Args:
-            inventory_file: Path to Ansible inventory file
+            landscape_file: Path to landscape.json configuration file
         """
-        self.inventory_file = inventory_file
+        self.landscape_file = landscape_file
+        self.landscape_data = {}
 
-        # Verify inventory file exists
-        inventory_path = Path(inventory_file)
-        if not inventory_path.exists():
-            print(f"Warning: Ansible inventory file not found: {inventory_file}")
-            print("Ansible executor will attempt to create dynamic inventory")
+        # Load landscape configuration
+        self._load_landscape_config()
+
+    def _load_landscape_config(self) -> None:
+        """Load landscape configuration from JSON file."""
+        try:
+            landscape_path = Path(self.landscape_file)
+            with open(landscape_path, 'r', encoding='utf-8') as file:
+                self.landscape_data = json.load(file)
+            print(f"Loaded landscape configuration for Ansible from {self.landscape_file}")
+        except FileNotFoundError:
+            print(f"Warning: Landscape file not found: {self.landscape_file}")
+            print("Ansible executor will use fallback configuration")
+        except json.JSONDecodeError as e:
+            print(f"Warning: Invalid JSON in landscape file: {e}")
+            print("Ansible executor will use fallback configuration")
+
+    def _find_sid_for_server(self, hostname: str) -> Optional[str]:
+        """
+        Find which SID a hostname belongs to.
+
+        Args:
+            hostname: The hostname to search for
+
+        Returns:
+            SID name if found, None if not found
+        """
+        for sid, system_config in self.landscape_data.items():
+            # Check application servers
+            app_servers = system_config.get('app_servers', {})
+            for server_type, hosts in app_servers.items():
+                if isinstance(hosts, list) and hostname in hosts:
+                    return sid
+                elif isinstance(hosts, str) and hostname == hosts:
+                    return sid
+
+            # Check database servers
+            database = system_config.get('database', {})
+            hana_hosts = database.get('hana_hosts', [])
+            if isinstance(hana_hosts, list) and hostname in hana_hosts:
+                return sid
+            elif isinstance(hana_hosts, str) and hostname == hana_hosts:
+                return sid
+
+        return None
+
+    def _is_database_server(self, hostname: str, sid: str) -> bool:
+        """
+        Check if hostname is a database server for the given SID.
+
+        Args:
+            hostname: The hostname to check
+            sid: The SID to check against
+
+        Returns:
+            True if hostname is a database server, False otherwise
+        """
+        if sid not in self.landscape_data:
+            return False
+
+        system_config = self.landscape_data[sid]
+        database = system_config.get('database', {})
+        hana_hosts = database.get('hana_hosts', [])
+
+        if isinstance(hana_hosts, list):
+            return hostname in hana_hosts
+        elif isinstance(hana_hosts, str):
+            return hostname == hana_hosts
+
+        return False
 
     def execute(self, server: str, command: str, backend: str, timeout: int = 30) -> Dict[str, Any]:
         """
@@ -145,26 +211,64 @@ class AnsibleExecutor:
 
     def _create_inventory(self, server: str) -> Dict[str, Any]:
         """
-        Create Ansible inventory.
+        Create dynamic Ansible inventory from landscape.json.
 
         Args:
             server: Target server hostname
 
         Returns:
             Inventory dictionary for ansible-runner
-        """
-        # Try to use inventory file if it exists
-        if Path(self.inventory_file).exists():
-            return str(self.inventory_file)
 
-        # Fallback: Create dynamic inventory for single host
+        Raises:
+            ValueError: If server not found or ssh_config not properly configured
+        """
+        # Find which SID this server belongs to
+        sid = self._find_sid_for_server(server)
+
+        if not sid:
+            raise ValueError(
+                f"Server '{server}' not found in landscape.json. "
+                f"Please add this server to the landscape configuration."
+            )
+
+        # Get SSH config from landscape.json
+        system_config = self.landscape_data[sid]
+        ssh_config = system_config.get('ssh_config')
+
+        if not ssh_config:
+            raise ValueError(
+                f"No ssh_config found for SID '{sid}' in landscape.json. "
+                f"Please add ssh_config section with app_server_user and database_user."
+            )
+
+        # Determine user based on server type
+        is_db_server = self._is_database_server(server, sid)
+
+        if is_db_server:
+            user = ssh_config.get('database_user')
+            if not user:
+                raise ValueError(
+                    f"No database_user defined in ssh_config for SID '{sid}'. "
+                    f"Please add database_user to ssh_config section."
+                )
+        else:
+            user = ssh_config.get('app_server_user')
+            if not user:
+                raise ValueError(
+                    f"No app_server_user defined in ssh_config for SID '{sid}'. "
+                    f"Please add app_server_user to ssh_config section."
+                )
+
+        # Build dynamic inventory
         return {
             'all': {
                 'hosts': {
                     server: {
                         'ansible_host': server,
-                        'ansible_user': 'sidadm',  # Default SAP user
-                        'ansible_ssh_common_args': '-o ControlMaster=auto -o ControlPersist=60s'
+                        'ansible_user': user,
+                        'ansible_ssh_common_args': '-o ControlMaster=auto -o ControlPersist=60s -o StrictHostKeyChecking=no',
+                        'ansible_timeout': 30,
+                        'ansible_python_interpreter': '/usr/bin/python3'
                     }
                 }
             }

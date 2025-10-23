@@ -147,17 +147,15 @@ The `backend` field supports three formats:
 - SOAP calls: `agent.soap` (get_process_list)
 
 ### config/landscape.json
-SAP system definitions with 4 SIDs (PRD, QAS, DEV, SBX), each containing:
+SAP system definitions with 5 SIDs (LOCAL, PRD, QAS, DEV, SBX), each containing:
 - `app_servers`: ASCS, PAS, AAS hostnames
 - `database.hana_hosts`: HANA database server hostnames
 - `ports`, `client`, metadata
+- **`ssh_config`**: SSH user configuration per SID
+  - `app_server_user`: User for application servers (e.g., `prdadm`)
+  - `database_user`: User for database servers (e.g., `h01adm`)
 
-### config/ansible_inventory.ini
-Ansible inventory defining all SAP hosts:
-- Groups: `[prd_app_servers]`, `[prd_db_servers]`, etc.
-- Aggregate groups: `[sap_app_servers]`, `[sap_db_servers]`, `[sap_all_servers]`
-- Global vars: `ansible_user=sidadm`, SSH connection multiplexing settings
-- Auto-generated from landscape.json structure
+**Single Source of Truth**: ansible_executor.py dynamically generates Ansible inventory from this file.
 
 ### config/ansible.cfg
 Ansible configuration for SAP environments:
