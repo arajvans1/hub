@@ -142,25 +142,75 @@ class AnsibleExecutor:
 
     def _execute_database(self, server: str, command: str, timeout: int) -> Dict[str, Any]:
         """
-        Execute database query via Ansible.
+        Execute database query via Ansible using community.sap_libs.sap_hdbsql module.
 
-        For SAP HANA, we use shell module with hdbsql or similar tools.
-        Future: Use community.general.hana_query module if available.
+        Requires:
+        - landscape.json to have database configuration with hana_sid, tenant_db, instance
+        - landscape.json to have database credentials (user/password) in database.credentials section
+
+        Documentation: https://docs.ansible.com/ansible/latest/collections/community/sap_libs/sap_hdbsql_module.html
         """
 
-        # For now, execute SQL via shell using hdbsql
-        # Assumes hdbsql is available and configured on target host
-        shell_command = f'echo "{command}" | hdbsql -j -x'
+        # Find which SID this server belongs to
+        sid = self._find_sid_for_server(server)
 
+        if not sid:
+            return {
+                "error": f"Cannot determine SID for server '{server}'. Server not found in landscape.json",
+                "server": server
+            }
+
+        # Get database configuration from landscape
+        system_config = self.landscape_data.get(sid, {})
+        database_config = system_config.get('database', {})
+
+        hana_sid = database_config.get('hana_sid')
+        # Use system_db if available, otherwise fall back to tenant_db
+        database_name = database_config.get('system_db') or database_config.get('tenant_db')
+        instance = database_config.get('instance', '00')  # Default to 00
+
+        # Get database credentials from landscape.json
+        credentials = database_config.get('credentials', {})
+        db_user = credentials.get('user', 'SYSTEM')  # Default to SYSTEM
+        db_password = credentials.get('password')
+
+        if not hana_sid or not database_name:
+            return {
+                "error": f"Missing HANA configuration for SID '{sid}' in landscape.json. "
+                        f"Need hana_sid and either system_db or tenant_db.",
+                "server": server,
+                "sid": sid
+            }
+
+        if not db_password:
+            return {
+                "error": f"Missing database credentials for SID '{sid}' in landscape.json. "
+                        f"Add database.credentials.password in landscape.json configuration.",
+                "server": server,
+                "sid": sid
+            }
+
+        # Build playbook using community.sap_libs.sap_hdbsql module
+        # Using direct user/password authentication instead of hdbuserstore
         playbook = [
             {
-                'name': 'Execute database query',
+                'name': 'Execute HANA database query',
                 'hosts': server,
                 'gather_facts': False,
                 'tasks': [
                     {
-                        'name': 'Run database query',
-                        'ansible.builtin.shell': shell_command,
+                        'name': 'Run HANA SQL query',
+                        'community.sap_libs.sap_hdbsql': {
+                            'sid': hana_sid.upper(),
+                            'instance': instance,
+                            'database': database_name,
+                            'query': command,
+                            # Direct username/password authentication
+                            'user': db_user,
+                            'password': db_password,
+                            # SSL/TLS encryption (only parameter supported)
+                            'encrypted': True
+                        },
                         'register': 'query_result',
                         'async': timeout,
                         'poll': 5

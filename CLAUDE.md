@@ -13,11 +13,23 @@ AI-powered conversational monitoring platform for SAP S/4HANA systems using Azur
 # Install dependencies
 pip install -r requirements.txt
 
+# Install Ansible SAP collection for database queries
+ansible-galaxy collection install community.sap_libs
+
 # Configure Azure OpenAI credentials (required for first run)
 # Edit config/vault.json with your credentials:
 {
   "azure_openai_api_key": "your-api-key",
   "azure_openai_endpoint": "https://your-resource.openai.azure.com/"
+}
+
+# Configure HANA database credentials (see DATABASE_CONFIG.md)
+# Edit config/landscape.json and add database credentials:
+"database": {
+  "credentials": {
+    "user": "SYSTEM",
+    "password": "your_hana_password"
+  }
 }
 ```
 
@@ -150,12 +162,21 @@ The `backend` field supports three formats:
 SAP system definitions with 5 SIDs (LOCAL, PRD, QAS, DEV, SBX), each containing:
 - `app_servers`: ASCS, PAS, AAS hostnames
 - `database.hana_hosts`: HANA database server hostnames
+- `database.hana_sid`: HANA System ID (3 characters)
+- `database.system_db`: System database name (usually "SYSTEMDB")
+- `database.tenant_db`: Tenant database name
+- `database.instance`: HANA instance number (e.g., "00")
+- **`database.credentials`**: Database authentication (user/password)
+  - `user`: Database username (default: "SYSTEM")
+  - `password`: Database password (**required for database queries**)
 - `ports`, `client`, metadata
 - **`ssh_config`**: SSH user configuration per SID
   - `app_server_user`: User for application servers (e.g., `prdadm`)
   - `database_user`: User for database servers (e.g., `h01adm`)
 
 **Single Source of Truth**: ansible_executor.py dynamically generates Ansible inventory from this file.
+
+**Database Authentication**: Ansible executor uses direct username/password authentication (stored in `database.credentials`). For production, migrate credentials to vault.py instead of landscape.json. See DATABASE_CONFIG.md for details.
 
 ### config/ansible.cfg
 Ansible configuration for SAP environments:
@@ -268,13 +289,25 @@ Edit `config/landscape.json`:
   },
   "database": {
     "hana_sid": "H05",
+    "system_db": "SYSTEMDB",
     "tenant_db": "NEW",
-    "hana_hosts": ["hana01.new.local"]
+    "instance": "00",
+    "hana_hosts": ["hana01.new.local"],
+    "credentials": {
+      "user": "SYSTEM",
+      "password": "your_database_password"
+    }
   },
   "ports": {"http": 8000, "https": 44300, "rfc": 3300},
-  "client": "100"
+  "client": "100",
+  "ssh_config": {
+    "app_server_user": "newadm",
+    "database_user": "h05adm"
+  }
 }
 ```
+
+**Important**: Add `database.credentials` section with actual HANA password for database queries to work.
 
 ## Vault Integration
 
